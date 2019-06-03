@@ -42,7 +42,8 @@ const cli = argv => {
     )
     .option("--print-width [width]", "line width (depends on --prettier)", 80)
     .option("--write", "write output to disk instead of STDOUT")
-    .option("--delete-source", "delete the source file");
+    .option("--delete-source", "delete the source file")
+    .option("--extension [extension]", "output file extension (default: .ts)");
 
   program.parse(argv);
 
@@ -60,7 +61,8 @@ const cli = argv => {
     trailingComma: program.trailingComma,
     bracketSpacing: Boolean(program.bracketSpacing),
     arrowParens: program.arrowParens,
-    printWidth: program.printWidth
+    printWidth: program.printWidth,
+    extension: program.extension
   };
 
   const files = new Set();
@@ -78,7 +80,7 @@ const cli = argv => {
       const outCode = convert(inCode, options);
 
       if (program.write) {
-        const outFile = file.replace(/\.js$/, ".ts");
+        const outFile = file.replace(/\.js$/, program.extension || ".ts");
         fs.writeFileSync(outFile, outCode);
       } else {
         console.log(outCode);
