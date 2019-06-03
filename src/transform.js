@@ -87,6 +87,8 @@ const QualifiedReactTypeNameMap = {
   // TODO: handle ComponentType, ElementConfig, ElementProps, etc.
 };
 
+const ImportSpecifierReactTypeNameMap = QualifiedReactTypeNameMap;
+
 const transform = {
   Program: {
     enter(path, state) {
@@ -628,6 +630,20 @@ const transform = {
   },
   ImportDeclaration: {
     exit(path) {
+      // Rename React imports that are directly imported
+      if (path.node.source.value === "react") {
+        for (const specifier of path.node.specifiers) {
+          const flowName = specifier.imported.name;
+          if (ImportSpecifierReactTypeNameMap[flowName]) {
+            path.scope.rename(
+              flowName,
+              ImportSpecifierReactTypeNameMap[flowName]
+            );
+            specifier.imported = specifier.local;
+          }
+        }
+      }
+
       path.node.importKind = "value";
       // TODO: make this configurable so we can output .ts[x]?
       const src = path.node.source.value.startsWith("./")
