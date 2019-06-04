@@ -633,13 +633,15 @@ const transform = {
       // Rename React imports that are directly imported
       if (path.node.source.value === "react") {
         for (const specifier of path.node.specifiers) {
-          const flowName = specifier.imported.name;
-          if (ImportSpecifierReactTypeNameMap[flowName]) {
-            path.scope.rename(
-              flowName,
-              ImportSpecifierReactTypeNameMap[flowName]
-            );
-            specifier.imported = specifier.local;
+          if (specifier.imported) {
+            const flowName = specifier.imported.name;
+            if (ImportSpecifierReactTypeNameMap[flowName]) {
+              path.scope.rename(
+                flowName,
+                ImportSpecifierReactTypeNameMap[flowName]
+              );
+              specifier.imported = specifier.local;
+            }
           }
         }
       }
