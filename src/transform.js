@@ -736,6 +736,90 @@ const transform = {
         declaration
       });
     }
+  },
+  OpaqueType: {
+    exit(path, state) {
+      state.usedUtilityTypes.add("Brand");
+      const { id, impltype, typeAnnotation } = path.node;
+
+      // Convert declaration to utility-types' Brand type
+      path.replaceWith(
+        t.tsTypeAliasDeclaration(
+          id,
+          typeAnnotation,
+          t.tsTypeReference(
+            t.identifier("Brand"),
+            t.tsTypeParameterInstantiation([
+              impltype,
+              t.tsLiteralType(t.stringLiteral(id.name))
+            ])
+          )
+        )
+      );
+
+      // Attempt to update all references in this file
+      const binding = path.scope.bindings[id.name];
+      if (binding) {
+        for (let i = 1; i < binding.referencePaths.length; i++) {
+          // skip first, which is reference to itself
+          const parentPath = binding.referencePaths[i].findParent(path =>
+            path.isIdentifier()
+          );
+
+          if (parentPath) {
+            const variablePath = parentPath.findParent(path =>
+              t.isVariableDeclaration(path.node)
+            );
+
+            if (variablePath) {
+              const { node } = variablePath;
+              const declarations = node.declarations.map(n => {
+                let typeAnnotation;
+                const flowTypeAnnotation = n.id.typeAnnotation.typeAnnotation;
+                switch (flowTypeAnnotation.type) {
+                  case "GenericTypeAnnotation":
+                    typeAnnotation = t.tsTypeReference(flowTypeAnnotation.id);
+                    break;
+                  // TODO: tsAsExpression of the union type.
+                  // Complexity here is that other types have not yet been converted at this traversal point.
+                  // Don't want to repeat logic. Maybe move to other visitor.
+                  case "UnionTypeAnnotation":
+                  default:
+                    console.warn(
+                      `Skipping type conversion of opaque complex type ${
+                        flowTypeAnnotation.type
+                      }`
+                    );
+                }
+                return t.variableDeclarator(
+                  n.id,
+                  typeAnnotation
+                    ? t.tsAsExpression(n.init, typeAnnotation)
+                    : n.init
+                );
+              });
+              variablePath.replaceWith(
+                t.variableDeclaration(node.kind, declarations)
+              );
+            }
+          }
+
+          const arrowFunctionExpressionPath = binding.referencePaths[
+            i
+          ].findParent(path => t.isArrowFunctionExpression(path.node));
+          if (arrowFunctionExpressionPath) {
+            const { node } = arrowFunctionExpressionPath;
+            const returnType = node.returnType.typeAnnotation.id; // TODO again only works for GenericTypeAnnotation
+            if (returnType && returnType.name === id.name) {
+              node.body = t.tsAsExpression(
+                node.body,
+                t.tsTypeReference(returnType)
+              );
+            }
+          }
+        }
+      }
+    }
   }
 };
 
