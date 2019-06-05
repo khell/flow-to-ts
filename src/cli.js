@@ -1,6 +1,8 @@
 const program = require("commander");
 const fs = require("fs");
+const fsReadDirRecursive = require("fs-readdir-recursive");
 const glob = require("glob");
+const path = require("path");
 
 const convert = require("./convert.js");
 const version = require("../package.json").version;
@@ -47,7 +49,8 @@ const cli = argv => {
 
   program.parse(argv);
 
-  if (program.args.length === 0) {
+  const fileOrDir = program.args[program.args.length - 1];
+  if (program.args.length === 0 || !fs.existsSync(fileOrDir)) {
     program.outputHelp();
     process.exit(1);
   }
@@ -65,11 +68,12 @@ const cli = argv => {
     extension: program.extension
   };
 
-  const files = new Set();
-  for (const arg of program.args) {
-    for (const file of glob.sync(arg)) {
-      files.add(file);
-    }
+  const stat = fs.statSync(fileOrDir);
+  let files = [fileOrDir];
+  if (stat.isDirectory()) {
+    files = fsReadDirRecursive(fileOrDir)
+      .filter(f => path.extname(f) === ".js")
+      .map(f => path.join(fileOrDir, f));
   }
 
   for (const file of files) {
