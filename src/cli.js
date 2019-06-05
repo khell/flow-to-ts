@@ -45,7 +45,12 @@ const cli = argv => {
     .option("--print-width [width]", "line width (depends on --prettier)", 80)
     .option("--write", "write output to disk instead of STDOUT")
     .option("--delete-source", "delete the source file")
-    .option("--extension [extension]", "output file extension (default: .ts)");
+    .option(
+      "--extension [.ts|.tsx]",
+      "output file extension (default: .ts)",
+      /\.ts(x)/,
+      ".ts"
+    );
 
   program.parse(argv);
 
@@ -55,7 +60,7 @@ const cli = argv => {
     process.exit(1);
     return;
   }
-  
+
   const options = {
     inlineUtilityTypes: Boolean(program.inlineUtilityTypes),
     prettier: program.prettier,
