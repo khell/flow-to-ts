@@ -828,6 +828,20 @@ const transform = {
         }
       }
     }
+  },
+  ExportNamedDeclaration: {
+    exit(path) {
+      // Flow: export type { Foo } from './foo'
+      // TS: export { Foo } from './foo'
+      const { exportKind, declaration } = path.node;
+      if (exportKind === "type" && !declaration) {
+        // export of existing declared variable
+        path.replaceWith({
+          ...path.node,
+          exportKind: "value"
+        });
+      }
+    }
   }
 };
 
