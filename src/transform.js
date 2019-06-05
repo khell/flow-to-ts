@@ -777,21 +777,24 @@ const transform = {
               const { node } = variablePath;
               const declarations = node.declarations.map(n => {
                 let typeAnnotation;
-                const flowTypeAnnotation = n.id.typeAnnotation.typeAnnotation;
-                switch (flowTypeAnnotation.type) {
-                  case "GenericTypeAnnotation":
-                    typeAnnotation = t.tsTypeReference(flowTypeAnnotation.id);
-                    break;
-                  // TODO: tsAsExpression of the union type.
-                  // Complexity here is that other types have not yet been converted at this traversal point.
-                  // Don't want to repeat logic. Maybe move to other visitor.
-                  case "UnionTypeAnnotation":
-                  default:
-                    console.warn(
-                      `Skipping type conversion of opaque complex type ${
-                        flowTypeAnnotation.type
-                      }`
-                    );
+                // If this variable declaration is annotated with a type
+                if (n.id.typeAnnotation) {
+                  const flowTypeAnnotation = n.id.typeAnnotation.typeAnnotation;
+                  switch (flowTypeAnnotation.type) {
+                    case "GenericTypeAnnotation":
+                      typeAnnotation = t.tsTypeReference(flowTypeAnnotation.id);
+                      break;
+                    // TODO: tsAsExpression of the union type.
+                    // Complexity here is that other types have not yet been converted at this traversal point.
+                    // Don't want to repeat logic. Maybe move to other visitor.
+                    case "UnionTypeAnnotation":
+                    default:
+                      console.warn(
+                        `Skipping type conversion of opaque complex type ${
+                          flowTypeAnnotation.type
+                        }`
+                      );
+                  }
                 }
                 return t.variableDeclarator(
                   n.id,
@@ -811,12 +814,15 @@ const transform = {
           ].findParent(path => t.isArrowFunctionExpression(path.node));
           if (arrowFunctionExpressionPath) {
             const { node } = arrowFunctionExpressionPath;
-            const returnType = node.returnType.typeAnnotation.id; // TODO again only works for GenericTypeAnnotation
-            if (returnType && returnType.name === id.name) {
-              node.body = t.tsAsExpression(
-                node.body,
-                t.tsTypeReference(returnType)
-              );
+            // If this arrow function expression is annotated with a return type
+            if (node.returnType) {
+              const returnType = node.returnType.typeAnnotation.id; // TODO again only works for GenericTypeAnnotation
+              if (returnType && returnType.name === id.name) {
+                node.body = t.tsAsExpression(
+                  node.body,
+                  t.tsTypeReference(returnType)
+                );
+              }
             }
           }
         }
