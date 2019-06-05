@@ -95,9 +95,8 @@ describe("cli", () => {
     expect(fs.existsSync(path.join(tmpdir, "test.ts"))).toBe(true);
   });
 
-  it("should write many files with a glob", () => {
+  it("should write all files in a directory", () => {
     // Arrange
-    const inputGlob = path.join(tmpdir, "*.js");
     fs.writeFileSync(
       path.join(tmpdir, "foo.js"),
       "const a: number = 5;",
@@ -110,12 +109,7 @@ describe("cli", () => {
     );
 
     // Act
-    cli([
-      "node",
-      path.join(__dirname, "../flow-to-ts.js"),
-      "--write",
-      inputGlob
-    ]);
+    cli(["node", path.join(__dirname, "../flow-to-ts.js"), "--write", tmpdir]);
 
     // Assert
     expect(fs.existsSync(path.join(tmpdir, "foo.ts"))).toBe(true);
@@ -142,9 +136,8 @@ describe("cli", () => {
     expect(fs.existsSync(inputPath)).toBe(false);
   });
 
-  it("should delete many original files", () => {
+  it("should delete many original files in a directory", () => {
     // Arrange
-    const inputGlob = path.join(tmpdir, "*.js");
     fs.writeFileSync(
       path.join(tmpdir, "foo.js"),
       "const a: number = 5;",
@@ -162,7 +155,7 @@ describe("cli", () => {
       path.join(__dirname, "../flow-to-ts.js"),
       "--write",
       "--delete-source",
-      inputGlob
+      tmpdir
     ]);
 
     // Assert

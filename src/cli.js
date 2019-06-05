@@ -53,8 +53,9 @@ const cli = argv => {
   if (program.args.length === 0 || !fs.existsSync(fileOrDir)) {
     program.outputHelp();
     process.exit(1);
+    return;
   }
-
+  
   const options = {
     inlineUtilityTypes: Boolean(program.inlineUtilityTypes),
     prettier: program.prettier,
@@ -68,8 +69,8 @@ const cli = argv => {
     extension: program.extension
   };
 
-  const stat = fs.statSync(fileOrDir);
   let files = [fileOrDir];
+  const stat = fs.statSync(fileOrDir);
   if (stat.isDirectory()) {
     files = fsReadDirRecursive(fileOrDir)
       .filter(f => path.extname(f) === ".js")
