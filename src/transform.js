@@ -818,10 +818,22 @@ const transform = {
             if (node.returnType) {
               const returnType = node.returnType.typeAnnotation.id; // TODO again only works for GenericTypeAnnotation
               if (returnType && returnType.name === id.name) {
-                node.body = t.tsAsExpression(
-                  node.body,
-                  t.tsTypeReference(returnType)
-                );
+                if (t.isBlockStatement(node.body)) {
+                  for (let i = 0; i < node.body.body.length; i++) {
+                    const returnStatementBodyNode = node.body.body[i];
+                    if (t.isReturnStatement(returnStatementBodyNode)) {
+                      returnStatementBodyNode.argument = t.tsAsExpression(
+                        returnStatementBodyNode.argument,
+                        t.tsTypeReference(returnType)
+                      );
+                    }
+                  }
+                } else {
+                  node.body = t.tsAsExpression(
+                    node.body,
+                    t.tsTypeReference(returnType)
+                  );
+                }
               }
             }
           }
