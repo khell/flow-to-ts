@@ -3,6 +3,7 @@ const traverse = require("../babel-traverse/lib/index.js").default;
 const generate = require("../babel-generator/lib/index.js").default;
 const prettier = require("prettier");
 const plugins = [require("prettier/parser-typescript.js")];
+const path = require("path");
 
 const transform = require("./transform.js");
 
@@ -55,7 +56,7 @@ const convert = (flowCode, options) => {
   if (options && options.prettier) {
     const prettierUserConfig =
       typeof options.prettier !== "boolean"
-        ? prettier.resolveConfig.sync(options.prettier)
+        ? prettier.resolveConfig.sync(null, { config: options.prettier })
         : {};
 
     const prettierOptions = {
