@@ -76,10 +76,16 @@ const convert = (flowCode, options) => {
       ...prettierUserConfig // Config file overrides all
     };
 
-    return prettier.format(tsCode, prettierOptions).trim();
-  } else {
-    return tsCode;
+    try {
+      return prettier.format(tsCode, prettierOptions).trim();
+    } catch (error) {
+      console.error(
+        "===> prettier-typescript could not understand syntax of this file. Please correct the syntax to a form prettier understands, or enable a plugin.",
+        error
+      );
+    }
   }
+  return tsCode;
 };
 
 module.exports = convert;

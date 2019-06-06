@@ -215,7 +215,7 @@ const transform = {
     path.replaceWith(t.tsNeverKeyword());
   },
   ExistsTypeAnnotation(path) {
-    console.warn("downgrading * to any");
+    console.warn("===> downgrading * to any");
     path.replaceWith(t.tsAnyKeyword());
   },
 
@@ -239,7 +239,7 @@ const transform = {
   FunctionDeclaration(path) {
     if (path.node.predicate) {
       console.warn(
-        `removing %checks at ${locToString(path.node.predicate.loc)}`
+        `===> removing %checks at ${locToString(path.node.predicate.loc)}`
       );
       delete path.node.predicate;
     }
@@ -247,7 +247,7 @@ const transform = {
   FunctionExpression(path) {
     if (path.node.predicate) {
       console.warn(
-        `removing %checks at ${locToString(path.node.predicate.loc)}`
+        `===> removing %checks at ${locToString(path.node.predicate.loc)}`
       );
       delete path.node.predicate;
     }
@@ -255,7 +255,7 @@ const transform = {
   ArrowFunctionExpression(path) {
     if (path.node.predicate) {
       console.warn(
-        `removing %checks at ${locToString(path.node.predicate.loc)}`
+        `===> removing %checks at ${locToString(path.node.predicate.loc)}`
       );
       delete path.node.predicate;
     }
@@ -357,7 +357,9 @@ const transform = {
     exit(path) {
       const { name, variance, bound } = path.node;
       if (variance) {
-        console.warn("TypeScript doesn't support variance on type parameters");
+        console.warn(
+          "===> TypeScript doesn't support variance on type parameters"
+        );
       }
       const typeParameter = {
         type: "TSTypeParameter",
@@ -438,10 +440,10 @@ const transform = {
 
       if (variance && variance.kind === "minus") {
         // TODO: include file and location of infraction
-        console.warn("typescript doesn't support writeonly properties");
+        console.warn("===> typescript doesn't support writeonly properties");
       }
       if (kind !== "init") {
-        console.warn("we don't handle get() or set() yet, :P");
+        console.warn("===> we don't handle get() or set() yet, :P");
       }
 
       if (method) {
@@ -481,7 +483,7 @@ const transform = {
       const readonly = variance && variance.kind === "plus";
       if (variance && variance.kind === "minus") {
         // TODO: include file and location of infraction
-        console.warn("typescript doesn't support writeonly properties");
+        console.warn("===> typescript doesn't support writeonly properties");
       }
 
       const identifier = {
@@ -526,7 +528,7 @@ const transform = {
       const { exact, properties, indexers } = path.node; // TODO: callProperties, inexact
 
       if (exact) {
-        console.warn("downgrading exact object type");
+        console.warn("===> downgrading exact object type");
       }
 
       // TODO: create multiple sets of elements so that we can convert
@@ -790,7 +792,7 @@ const transform = {
                     case "UnionTypeAnnotation":
                     default:
                       console.warn(
-                        `Skipping type conversion of opaque complex type ${
+                        `===> Skipping type conversion of opaque complex type ${
                           flowTypeAnnotation.type
                         }`
                       );

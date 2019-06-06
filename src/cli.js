@@ -107,6 +107,8 @@ const cli = argv => {
   }
 
   for (const file of files) {
+    console.log(`[TRANSPILING] ${file}`);
+
     const inFile = file;
     const inCode = fs.readFileSync(inFile, "utf-8");
 
@@ -130,7 +132,7 @@ const cli = argv => {
         fs.unlinkSync(inFile);
       }
     } catch (e) {
-      console.log(`error processing ${inFile}`);
+      console.log(`===> error processing ${inFile}`);
       console.log(e);
     }
   }
