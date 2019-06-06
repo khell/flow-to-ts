@@ -49,6 +49,10 @@ const cli = argv => {
     )
     .option("--print-width [width]", "line width (depends on --prettier)", 80)
     .option("--write", "write output to disk instead of STDOUT")
+    .option(
+      "--write-path [path]",
+      "optional path to write to (depends on --write)"
+    )
     .option("--delete-source", "delete the source file")
     .option(
       "--extension [.ts|.tsx]",
@@ -59,8 +63,23 @@ const cli = argv => {
 
   program.parse(argv);
 
+  // Check write directory validity
+  let isValidWriteDirectory = true;
+  try {
+    if (typeof program.write === "string") {
+      const stat = fs.statSync(program.write);
+      isValidWriteDirectory = stat.isDirectory();
+    }
+  } catch (error) {
+    isValidWriteDirectory = false;
+  }
+
   const fileOrDir = program.args[program.args.length - 1];
-  if (program.args.length === 0 || !fs.existsSync(fileOrDir)) {
+  if (
+    program.args.length === 0 ||
+    !fs.existsSync(fileOrDir) ||
+    !isValidWriteDirectory
+  ) {
     program.outputHelp();
     process.exit(1);
     return;
@@ -95,8 +114,14 @@ const cli = argv => {
       const outCode = convert(inCode, options);
 
       if (program.write) {
-        const outFile = file.replace(/\.js$/, program.extension || ".ts");
-        fs.writeFileSync(outFile, outCode);
+        const outPath =
+          typeof program.writePath === "string"
+            ? program.writePath
+            : path.dirname(file);
+        const outFile = path
+          .basename(file)
+          .replace(/\.js$/, program.extension || ".ts");
+        fs.writeFileSync(path.join(outPath, outFile), outCode);
       } else {
         console.log(outCode);
       }
