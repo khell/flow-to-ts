@@ -1,4 +1,4 @@
-const program = require("commander");
+const commander = require("commander");
 const fs = require("fs");
 const fsReadDirRecursive = require("fs-readdir-recursive");
 const glob = require("glob");
@@ -8,6 +8,8 @@ const convert = require("./convert.js");
 const version = require("../package.json").version;
 
 const cli = argv => {
+  const program = new commander.Command();
+
   program
     .version(version)
     .option("--inline-utility-types", "inline utility types when possible")
