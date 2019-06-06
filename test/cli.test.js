@@ -10,8 +10,15 @@ const cli = require("../src/cli.js");
 tmp.setGracefulCleanup();
 
 describe("cli", () => {
+  const fixturesPath = path.join(__dirname, "fixtures", "cli");
+
+  let mockExit;
   let tmpdir;
   let tmpobj;
+
+  beforeAll(() => {
+    mockExit = mockProcess.mockProcessExit();
+  });
 
   beforeEach(() => {
     tmpobj = tmp.dirSync();
@@ -23,10 +30,13 @@ describe("cli", () => {
     tmpobj.removeCallback();
   });
 
+  afterAll(() => {
+    mockExit.mockRestore();
+  });
+
   it("should exit with code one when no files have been provided", () => {
     // Arrange
     mockConsole();
-    const mockExit = mockProcess.mockProcessExit();
     const mockStdout = mockProcess.mockProcessStdout();
 
     // Act
@@ -182,6 +192,62 @@ describe("cli", () => {
     // Assert
     const output = fs.readFileSync(outputPath, "utf-8");
     expect(output).toBe("const a: number = 5;");
+  });
+
+  it("should support prettier without a config file", () => {
+    // Arrange
+    const prettierFixturesPath = path.join(fixturesPath, "prettier");
+    const outputPath = path.join(tmpdir, "base.ts");
+    const outputExpectedPath = path.join(
+      prettierFixturesPath,
+      "typescript-without-config.ts"
+    );
+    const inputPath = path.join(prettierFixturesPath, "base.js");
+
+    // Act
+    cli([
+      "node",
+      path.join(__dirname, "../flow-to-ts.js"),
+      "--prettier",
+      "--write",
+      "--write-path",
+      tmpdir,
+      inputPath
+    ]);
+
+    // Assert
+    const output = fs.readFileSync(outputPath, "utf-8");
+    const outputExpected = fs.readFileSync(outputExpectedPath, "utf-8");
+    expect(output).toBe(outputExpected);
+  });
+
+  it("should support prettier with a config file", () => {
+    // Arrange
+    const prettierFixturesPath = path.join(fixturesPath, "prettier");
+    const prettierConfigPath = path.join(prettierFixturesPath, "prettierrc");
+    const outputPath = path.join(tmpdir, "base.ts");
+    const outputExpectedPath = path.join(
+      prettierFixturesPath,
+      "typescript-with-config.ts"
+    );
+    const inputPath = path.join(prettierFixturesPath, "base.js");
+
+    // Act
+    cli([
+      "node",
+      path.join(__dirname, "../flow-to-ts.js"),
+      "--prettier",
+      prettierConfigPath,
+      "--write",
+      "--write-path",
+      tmpdir,
+      inputPath
+    ]);
+
+    // Assert
+    const output = fs.readFileSync(outputPath, "utf-8");
+    const outputExpected = fs.readFileSync(outputExpectedPath, "utf-8");
+    expect(output).toBe(outputExpected);
   });
 
   // TODO: add tests for option handling
