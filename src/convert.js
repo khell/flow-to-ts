@@ -22,6 +22,10 @@ const parseOptions = {
   ]
 };
 
+const generatorOptions = {
+  decoratorsBeforeExport: true
+};
+
 const convert = (flowCode, options) => {
   const ast = parse(flowCode, parseOptions);
 
@@ -48,7 +52,7 @@ const convert = (flowCode, options) => {
 
   // we pass flowCode so that generate can compute source maps
   // if we ever decide to
-  let tsCode = generate(ast, flowCode).code;
+  let tsCode = generate(ast, generatorOptions, flowCode).code;
   for (let i = 0; i < state.trailingLines; i++) {
     tsCode += "\n";
   }
