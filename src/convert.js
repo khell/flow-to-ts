@@ -1,7 +1,7 @@
 const { parse } = require("@babel/parser");
 const traverse = require("../babel-traverse/lib/index.js").default;
 const generate = require("../babel-generator/lib/index.js").default;
-const prettier = require("prettier/standalone.js");
+const prettier = require("prettier");
 const plugins = [require("prettier/parser-typescript.js")];
 
 const transform = require("./transform.js");
@@ -53,6 +53,11 @@ const convert = (flowCode, options) => {
   }
 
   if (options && options.prettier) {
+    const prettierUserConfig =
+      typeof options.prettier !== "boolean"
+        ? prettier.resolveConfig.sync(options.prettier)
+        : {};
+
     const prettierOptions = {
       parser: "typescript",
       plugins,
@@ -62,8 +67,10 @@ const convert = (flowCode, options) => {
       trailingComma: options.trailingComma,
       bracketSpacing: options.bracketSpacing,
       arrowParens: options.arrowParens,
-      printWidth: options.printWidth
+      printWidth: options.printWidth,
+      ...prettierUserConfig // Config file overrides all
     };
+
     return prettier.format(tsCode, prettierOptions).trim();
   } else {
     return tsCode;
