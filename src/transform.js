@@ -361,12 +361,23 @@ const transform = {
           "===> TypeScript doesn't support variance on type parameters"
         );
       }
+
       const typeParameter = {
         type: "TSTypeParameter",
         constraint: bound && bound.typeAnnotation,
         default: path.node.default,
         name
       };
+
+      // Flow: <T>() => {}
+      // TS: <T extends {}>() => {}
+      if (
+        path.findParent(path => t.isArrowFunctionExpression(path.node)) &&
+        !typeParameter.constraint
+      ) {
+        typeParameter.constraint = t.tsTypeLiteral([]);
+      }
+
       // TODO: patch @babel/types - tsTypeParameter omits name
       // const typeParameter = t.tsTypeParameter(constraint, _default, name));
       path.replaceWith(typeParameter);
