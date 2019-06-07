@@ -372,7 +372,9 @@ const transform = {
       // Flow: <T>() => {}
       // TS: <T extends {}>() => {}
       if (
-        path.findParent(path => t.isArrowFunctionExpression(path.node)) &&
+        path.parentPath &&
+        path.parentPath.parentPath &&
+        t.isArrowFunctionExpression(path.parentPath.parentPath) &&
         !typeParameter.constraint
       ) {
         typeParameter.constraint = t.tsTypeLiteral([]);
