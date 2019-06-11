@@ -57,7 +57,7 @@ const cli = argv => {
     .option(
       "--extension [.ts|.tsx]",
       "output file extension (default: .ts)",
-      /\.ts(x)/,
+      /\.tsx?/,
       ".ts"
     );
 
