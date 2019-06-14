@@ -322,9 +322,27 @@ const transform = {
         delete rest.typeAnnotation;
       }
       const typeAnnotation = t.tsTypeAnnotation(returnType);
-      path.replaceWith(
-        t.tsFunctionType(typeParameters, parameters, typeAnnotation)
+
+      // In a Flow ObjectTypeAnnotation, it is acceptable to have a property
+      // union or intersection type contain a unparenthesized function type.
+      // This is not acceptable with TS.
+      const parentNode = path.parentPath && path.parentPath.node;
+      let tsReplacementType = t.tsFunctionType(
+        typeParameters,
+        parameters,
+        typeAnnotation
       );
+      if (
+        parentNode &&
+        (t.isUnionTypeAnnotation(parentNode) ||
+          t.isIntersectionTypeAnnotation(parentNode) ||
+          t.isTSUnionType(parentNode) ||
+          t.isTSIntersectionType(parentNode))
+      ) {
+        tsReplacementType = t.tsParenthesizedType(tsReplacementType);
+      }
+
+      path.replaceWith(tsReplacementType);
     }
   },
   FunctionTypeParam: {
