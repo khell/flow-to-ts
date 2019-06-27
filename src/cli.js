@@ -55,10 +55,15 @@ const cli = argv => {
     )
     .option("--delete-source", "delete the source file")
     .option(
-      "--extension [.ts|.tsx]",
+      "--output-extension [.ts|.tsx]",
       "output file extension (default: .ts)",
       /\.tsx?/,
       ".ts"
+    )
+    .option(
+      "--input-pattern [pattern]",
+      "search input regexp for filename matching (default: /.js$/)",
+      ".js"
     );
 
   program.parse(argv);
@@ -95,14 +100,25 @@ const cli = argv => {
     bracketSpacing: Boolean(program.bracketSpacing),
     arrowParens: program.arrowParens,
     printWidth: program.printWidth,
-    extension: program.extension
+    inputPattern: program.inputPattern,
+    outputExtension: program.outputExtension
   };
+
+  let inputPattern;
+  try {
+    inputPattern = new RegExp(options.inputPattern);
+  } catch (error) {
+    console.error("--input-pattern regular expression is invalid.");
+    program.outputHelp();
+    process.exit(1);
+    return;
+  }
 
   let files = [fileOrDir];
   const stat = fs.statSync(fileOrDir);
   if (stat.isDirectory()) {
     files = fsReadDirRecursive(fileOrDir)
-      .filter(f => path.extname(f) === ".js")
+      .filter(f => path.basename(f).match(inputPattern))
       .map(f => path.join(fileOrDir, f));
   }
 
@@ -122,7 +138,7 @@ const cli = argv => {
             : path.dirname(file);
         const outFile = path
           .basename(file)
-          .replace(/\.js$/, program.extension || ".ts");
+          .replace(/\.js$/, program.outputExtension || ".ts");
         fs.writeFileSync(path.join(outPath, outFile), outCode);
       } else {
         console.log(outCode);

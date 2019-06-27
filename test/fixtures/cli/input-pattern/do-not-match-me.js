@@ -1,0 +1,2 @@
+// @flow
+let bar = 'foo';

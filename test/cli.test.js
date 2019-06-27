@@ -1,6 +1,7 @@
 const path = require("path");
 const tmp = require("tmp");
 const fs = require("fs");
+const fsReadDirRecursive = require("fs-readdir-recursive");
 const mockConsole = require("jest-mock-console").default;
 const mockProcess = require("jest-mock-process");
 
@@ -252,5 +253,26 @@ describe("cli", () => {
     expect(output).toBe(outputExpected);
   });
 
+  it("should match the regular expression defined by --input-pattern option", () => {
+    // Arrange
+    const inputPatternFixturesPath = path.join(fixturesPath, "input-pattern");
+
+    // Act
+    cli([
+      "node",
+      path.join(__dirname, "../flow-to-ts.js"),
+      "--input-pattern",
+      "^EXACTMATCH$",
+      "--write",
+      "--write-path",
+      tmpdir,
+      inputPatternFixturesPath
+    ]);
+
+    // Assert
+    const writtenFiles = fsReadDirRecursive(tmpdir);
+    expect(writtenFiles).toHaveLength(1);
+    expect(writtenFiles[0]).toEqual("EXACTMATCH");
+  });
   // TODO: add tests for option handling
 });
