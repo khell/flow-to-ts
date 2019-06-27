@@ -80,14 +80,46 @@ const QualifiedReactTypeNameMap = {
   Element: "ReactElement",
   Fragment: "ReactFragment",
   Portal: "ReactPortal",
-  NodeArray: "ReactNodeArray"
+  NodeArray: "ReactNodeArray",
 
   // TODO: private types, e.g. React$ElementType, React$Node, etc.
 
   // TODO: handle ComponentType, ElementConfig, ElementProps, etc.
+  ElementProps: "ComponentProps"
 };
 
-const ImportSpecifierReactTypeNameMap = QualifiedReactTypeNameMap;
+const ImportSpecifierReactTypeNameMap = {
+  ...QualifiedReactTypeNameMap,
+  ElementConfig: (path, specifier) => {
+    // Implements this equivalent TS type:
+    // type ElementConfig<C extends React.JSXElementConstructor<any>> = JSX.LibraryManagedAttributes<C, React.ComponentProps<C>>;
+    const referencePaths = path.scope.bindings.ElementConfig.referencePaths;
+    for (referencePath of referencePaths) {
+      const parentPath = referencePath.parentPath;
+      parentPath.replaceWith(
+        t.tsTypeReference(
+          t.tsQualifiedName(
+            t.identifier("JSX"),
+            t.identifier("LibraryManagedAttributes")
+          ),
+          t.tsTypeParameterInstantiation([
+            t.tsTypeQuery(parentPath.node.typeParameters.params[0].argument.id),
+            t.tsTypeReference(
+              t.identifier("ComponentProps"),
+              t.tsTypeParameterInstantiation([
+                t.tsTypeQuery(
+                  parentPath.node.typeParameters.params[0].argument.id
+                )
+              ])
+            )
+          ])
+        )
+      );
+    }
+    path.scope.rename("ElementConfig", "ComponentProps");
+    specifier.imported = specifier.local;
+  }
+};
 
 const transform = {
   Program: {
@@ -669,12 +701,15 @@ const transform = {
         for (const specifier of path.node.specifiers) {
           if (specifier.imported) {
             const flowName = specifier.imported.name;
-            if (ImportSpecifierReactTypeNameMap[flowName]) {
+            const transformation = ImportSpecifierReactTypeNameMap[flowName];
+            if (typeof transformation === "string") {
               path.scope.rename(
                 flowName,
                 ImportSpecifierReactTypeNameMap[flowName]
               );
               specifier.imported = specifier.local;
+            } else if (typeof transformation === "function") {
+              transformation(path, specifier);
             }
           }
         }
