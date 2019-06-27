@@ -42,7 +42,8 @@ const convert = (flowCode, options) => {
   const state = {
     usedUtilityTypes: new Set(),
     options: Object.assign({ inlineUtilityTypes: false }, options),
-    comments
+    comments,
+    containsJSX: false
   };
   traverse(ast, transform, null, state);
 
@@ -77,7 +78,7 @@ const convert = (flowCode, options) => {
     };
 
     try {
-      return prettier.format(tsCode, prettierOptions).trim();
+      return { state, code: prettier.format(tsCode, prettierOptions).trim() };
     } catch (error) {
       console.error(
         "===> prettier-typescript could not understand syntax of this file. Please correct the syntax to a form prettier understands, or enable a plugin.",
@@ -85,7 +86,7 @@ const convert = (flowCode, options) => {
       );
     }
   }
-  return tsCode;
+  return { state, code: tsCode };
 };
 
 module.exports = convert;

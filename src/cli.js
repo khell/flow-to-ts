@@ -55,10 +55,8 @@ const cli = argv => {
     )
     .option("--delete-source", "delete the source file")
     .option(
-      "--output-extension [.ts|.tsx]",
-      "output file extension (default: .ts)",
-      /\.tsx?/,
-      ".ts"
+      "--output-extension [extension]",
+      "output file extension. If not supplied, it will output .ts or .tsx depending on whether JSX is present in source file."
     )
     .option(
       "--input-pattern [pattern]",
@@ -129,16 +127,16 @@ const cli = argv => {
     const inCode = fs.readFileSync(inFile, "utf-8");
 
     try {
-      const outCode = convert(inCode, options);
+      const { state, code: outCode } = convert(inCode, options);
+      const outputExtension =
+        program.outputExtension || state.containsJSX ? ".tsx" : ".ts";
 
       if (program.write) {
         const outPath =
           typeof program.writePath === "string"
             ? program.writePath
             : path.dirname(file);
-        const outFile = path
-          .basename(file)
-          .replace(/\.js$/, program.outputExtension || ".ts");
+        const outFile = path.basename(file).replace(/\.js$/, outputExtension);
         fs.writeFileSync(path.join(outPath, outFile), outCode);
       } else {
         console.log(outCode);

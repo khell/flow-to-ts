@@ -32,11 +32,13 @@ describe("convert", () => {
             fs.readFileSync(path.join(dir, "options.json"), "utf-8")
           );
           test(testName.replace(/_/g, " "), () => {
-            expect(convert(flowCode, options)).toEqual(tsCode);
+            const { code } = convert(flowCode, options);
+            expect(code).toEqual(tsCode);
           });
         } else {
           test(testName.replace(/_/g, " "), () => {
-            expect(convert(flowCode)).toEqual(tsCode);
+            const { code } = convert(flowCode);
+            expect(code).toEqual(tsCode);
           });
         }
       }

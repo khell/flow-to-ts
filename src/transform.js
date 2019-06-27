@@ -888,6 +888,13 @@ const transform = {
         });
       }
     }
+  },
+  // Alias for all JSX types
+  // https://github.com/babel/babel/blob/master/packages/babel-types/src/definitions/jsx.js
+  JSX: {
+    exit(path, state) {
+      state.containsJSX = true;
+    }
   }
 };
 

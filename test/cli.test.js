@@ -200,10 +200,10 @@ describe("cli", () => {
   it("should support prettier without a config file", () => {
     // Arrange
     const prettierFixturesPath = path.join(fixturesPath, "prettier");
-    const outputPath = path.join(tmpdir, "base.ts");
+    const outputPath = path.join(tmpdir, "base.tsx");
     const outputExpectedPath = path.join(
       prettierFixturesPath,
-      "typescript-without-config.ts"
+      "typescript-without-config.tsx"
     );
     const inputPath = path.join(prettierFixturesPath, "base.js");
 
@@ -228,10 +228,10 @@ describe("cli", () => {
     // Arrange
     const prettierFixturesPath = path.join(fixturesPath, "prettier");
     const prettierConfigPath = path.join(prettierFixturesPath, "prettierrc");
-    const outputPath = path.join(tmpdir, "base.ts");
+    const outputPath = path.join(tmpdir, "base.tsx");
     const outputExpectedPath = path.join(
       prettierFixturesPath,
-      "typescript-with-config.ts"
+      "typescript-with-config.tsx"
     );
     const inputPath = path.join(prettierFixturesPath, "base.js");
 
@@ -274,5 +274,46 @@ describe("cli", () => {
     expect(writtenFiles).toHaveLength(1);
     expect(writtenFiles[0]).toEqual("EXACTMATCH");
   });
+
+  it("outputs a .ts file if no JSX is present", () => {
+    // Arrange
+    const detectsJSXFixturesPath = path.join(fixturesPath, "detects-jsx");
+
+    // Act
+    cli([
+      "node",
+      path.join(__dirname, "../flow-to-ts.js"),
+      "--write",
+      "--write-path",
+      tmpdir,
+      path.join(detectsJSXFixturesPath, "has-no-jsx.js")
+    ]);
+
+    // Assert
+    const writtenFiles = fsReadDirRecursive(tmpdir);
+    expect(writtenFiles).toHaveLength(1);
+    expect(writtenFiles[0]).toEqual("has-no-jsx.ts");
+  });
+
+  it("outputs a .tsx file if JSX is present", () => {
+    // Arrange
+    const detectsJSXFixturesPath = path.join(fixturesPath, "detects-jsx");
+
+    // Act
+    cli([
+      "node",
+      path.join(__dirname, "../flow-to-ts.js"),
+      "--write",
+      "--write-path",
+      tmpdir,
+      path.join(detectsJSXFixturesPath, "has-jsx.js")
+    ]);
+
+    // Assert
+    const writtenFiles = fsReadDirRecursive(tmpdir);
+    expect(writtenFiles).toHaveLength(1);
+    expect(writtenFiles[0]).toEqual("has-jsx.tsx");
+  });
+
   // TODO: add tests for option handling
 });

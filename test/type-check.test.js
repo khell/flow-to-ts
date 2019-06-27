@@ -25,7 +25,8 @@ const convertAndGetDiagnostics = basename => {
     "utf-8"
   );
   const tsFilename = path.join(tmpobj.name, `${basename}.ts`);
-  fs.writeFileSync(tsFilename, convert(value));
+  const { code } = convert(value);
+  fs.writeFileSync(tsFilename, code);
   const prog = ts.createProgram([tsFilename], { lib: [] });
 
   // Getting diagnostics for a single file is a lot faster than getting them
