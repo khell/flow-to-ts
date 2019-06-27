@@ -63,7 +63,7 @@ const cli = argv => {
     .option(
       "--input-pattern [pattern]",
       "search input regexp for filename matching (default: /.js$/)",
-      ".js"
+      ".js$"
     );
 
   program.parse(argv);
