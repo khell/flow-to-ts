@@ -118,6 +118,36 @@ const ImportSpecifierReactTypeNameMap = {
     }
     path.scope.rename("ElementConfig", "ComponentProps");
     specifier.imported = specifier.local;
+  },
+  ElementRef: (path, specifier) => {
+    const referencePaths = path.scope.bindings.ElementRef.referencePaths;
+    for (referencePath of referencePaths) {
+      const parentPath = referencePath.parentPath;
+      parentPath.replaceWith(
+        t.tsTypeReference(
+          parentPath.node.id,
+          t.tsTypeParameterInstantiation(
+            parentPath.node.typeParameters.params.map(paramNode => {
+              if (t.isStringLiteralTypeAnnotation(paramNode)) {
+                console.warn(
+                  `===> Downgrading ElementRef JSX intrinsic type '${
+                    paramNode.value
+                  }' to Element. You can manually replace with a more specific type.`
+                );
+                return t.tsTypeReference(t.identifier("Element"));
+              } else if (t.isGenericTypeAnnotation(paramNode)) {
+                return t.tsTypeReference(paramNode.id);
+              } else if (t.isTypeofTypeAnnotation(paramNode)) {
+                return t.tsTypeQuery(paramNode.argument.id);
+              }
+              return paramNode;
+            })
+          )
+        )
+      );
+    }
+    path.scope.rename("ElementRef", "RefObject");
+    specifier.imported = specifier.local;
   }
 };
 
