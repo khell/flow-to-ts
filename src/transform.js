@@ -206,7 +206,7 @@ const transform = {
     path.replaceWith(t.tsAnyKeyword());
   },
   VoidTypeAnnotation(path) {
-    path.replaceWith(t.tsVoidKeyword());
+    path.replaceWith(t.tsUndefinedKeyword());
   },
   MixedTypeAnnotation(path) {
     path.replaceWith(t.tsUnknownKeyword());

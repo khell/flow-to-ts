@@ -1,1 +1,1 @@
-let a: void;
+let a: undefined;

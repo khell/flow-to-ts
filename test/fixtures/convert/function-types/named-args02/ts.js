@@ -1,1 +1,1 @@
-let a: (b?: string) => void;
+let a: (b?: string) => undefined;

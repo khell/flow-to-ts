@@ -1,1 +1,1 @@
-let a: (b: string, ...rest: number[]) => void;
+let a: (b: string, ...rest: number[]) => undefined;

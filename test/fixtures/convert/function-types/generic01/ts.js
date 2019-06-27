@@ -1,1 +1,1 @@
-let a: <T>(b: T) => void;
+let a: <T>(b: T) => undefined;
