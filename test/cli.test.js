@@ -85,7 +85,7 @@ describe("cli", () => {
     cli(["node", path.join(__dirname, "../flow-to-ts.js"), inputPath]);
 
     // Assert
-    expect(console.log).toHaveBeenCalledWith(
+    expect(console.error).toHaveBeenCalledWith(
       `===> error processing ${inputPath}`
     );
   });

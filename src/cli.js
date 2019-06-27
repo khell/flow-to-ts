@@ -132,8 +132,8 @@ const cli = argv => {
         fs.unlinkSync(inFile);
       }
     } catch (e) {
-      console.log(`===> error processing ${inFile}`);
-      console.log(e);
+      console.error(`===> error processing ${inFile}`);
+      console.error(e);
     }
   }
 };
