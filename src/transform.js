@@ -139,6 +139,11 @@ const ImportSpecifierReactTypeNameMap = {
                 return t.tsTypeReference(paramNode.id);
               } else if (t.isTypeofTypeAnnotation(paramNode)) {
                 return t.tsTypeQuery(paramNode.argument.id);
+              } else if (t.isAnyTypeAnnotation(paramNode)) {
+                console.warn(
+                  `===> Replacing ElementRef JSX Any type to Element.`
+                );
+                return t.tsTypeReference(t.identifier("Element"));
               }
               return paramNode;
             })
