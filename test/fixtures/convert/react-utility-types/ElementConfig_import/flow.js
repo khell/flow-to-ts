@@ -1,5 +1,5 @@
 // @flow
-import React, { type ElementConfig, memo } from 'react';
+import React, { type ElementConfig, type ComponentType, memo } from 'react';
 
 type Props = {|
     foo: string;
@@ -15,3 +15,7 @@ FooComponent.defaultProps = {
 };
 
 export default memo<ElementConfig<typeof FooComponent>>(FooComponent);
+
+const withRouter = <P: {}, C: ComponentType<P>>(
+    WrappedComponent: C,
+): ComponentType<$Diff<ElementConfig<C>, {}>> => {}

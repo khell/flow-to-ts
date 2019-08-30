@@ -96,6 +96,12 @@ const ImportSpecifierReactTypeNameMap = {
     const referencePaths = path.scope.bindings.ElementConfig.referencePaths;
     for (referencePath of referencePaths) {
       const parentPath = referencePath.parentPath;
+      const reference = t.isTypeofTypeAnnotation(
+        parentPath.node.typeParameters.params[0]
+      )
+        ? t.tsTypeQuery(parentPath.node.typeParameters.params[0].argument.id)
+        : t.tsTypeReference(parentPath.node.typeParameters.params[0].id);
+
       parentPath.replaceWith(
         t.tsTypeReference(
           t.tsQualifiedName(
@@ -103,14 +109,10 @@ const ImportSpecifierReactTypeNameMap = {
             t.identifier("LibraryManagedAttributes")
           ),
           t.tsTypeParameterInstantiation([
-            t.tsTypeQuery(parentPath.node.typeParameters.params[0].argument.id),
+            reference,
             t.tsTypeReference(
               t.identifier("ComponentProps"),
-              t.tsTypeParameterInstantiation([
-                t.tsTypeQuery(
-                  parentPath.node.typeParameters.params[0].argument.id
-                )
-              ])
+              t.tsTypeParameterInstantiation([reference])
             )
           ])
         )
