@@ -27,20 +27,13 @@ describe("convert", () => {
         const tsCode = fs.readFileSync(path.join(dir, "ts.js"), "utf-8");
         const hasOptions = fs.existsSync(path.join(dir, "options.json"));
 
-        if (hasOptions) {
-          const options = JSON.parse(
-            fs.readFileSync(path.join(dir, "options.json"), "utf-8")
-          );
-          test(testName.replace(/_/g, " "), () => {
-            const { code } = convert(flowCode, options);
-            expect(code).toEqual(tsCode);
-          });
-        } else {
-          test(testName.replace(/_/g, " "), () => {
-            const { code } = convert(flowCode);
-            expect(code).toEqual(tsCode);
-          });
-        }
+        const options = hasOptions
+          ? JSON.parse(fs.readFileSync(path.join(dir, "options.json"), "utf-8"))
+          : undefined;
+        test(testName.replace(/_/g, " "), () => {
+          const { code } = convert(flowCode, options);
+          expect(code).toEqual(tsCode);
+        });
       }
     });
   }
