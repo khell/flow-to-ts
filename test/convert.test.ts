@@ -1,17 +1,16 @@
-const fs = require("fs");
-const path = require("path");
-
-const convert = require("../src/convert.js");
+import fs from "fs";
+import path from "path";
+import convert from "../src/convert";
 
 const failingTestNames = ["spread03", "spread04"];
 
 describe("convert", () => {
-  const suites = false
+  const suites: string[] = false
     ? []
     : fs.readdirSync(path.join(__dirname, "fixtures/convert"));
   for (const suiteName of suites) {
     describe(suiteName, () => {
-      const tests = false
+      const tests: string[] = false
         ? []
         : fs.readdirSync(path.join(__dirname, "fixtures/convert", suiteName));
       for (const testName of tests.filter(

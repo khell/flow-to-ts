@@ -1,13 +1,14 @@
-const { parse } = require("@babel/parser");
-const traverse = require("@babel/traverse").default;
-const generate = require("@babel/generator").default;
-const prettier = require("prettier");
-const plugins = [require("prettier/parser-typescript.js")];
-const path = require("path");
+import { parse, ParserOptions } from "@babel/parser";
+import traverse from "@babel/traverse";
+import generate, { GeneratorOptions } from "@babel/generator";
+import { File } from "@babel/types";
+import prettier, { Options as PrettierOptions } from "prettier";
+import prettierTSPlugin from "prettier/parser-typescript";
 
-const transform = require("./transform.js");
+import { CliOptions } from "./cli";
+import transform, { VisitorState } from "./transform";
 
-const parseOptions = {
+const parseOptions: ParserOptions = {
   sourceType: "module",
   plugins: [
     // enable jsx and flow syntax
@@ -22,14 +23,14 @@ const parseOptions = {
   ]
 };
 
-const generatorOptions = {
+const generatorOptions: GeneratorOptions = {
   decoratorsBeforeExport: true
 };
 
-const convert = (flowCode, options) => {
+const convert = (flowCode: string, options?: CliOptions) => {
   const ast = parse(flowCode, parseOptions);
 
-  const comments = {
+  const comments: { [key: string]: File["comments"] } = {
     startLine: {},
     endLine: {}
   };
@@ -39,17 +40,14 @@ const convert = (flowCode, options) => {
   }
 
   // apply our transforms, traverse mutates the ast
-  const state = {
+  const state: VisitorState = {
     usedUtilityTypes: new Set(),
-    options: Object.assign({ inlineUtilityTypes: false }, options),
+    options: { inlineUtilityTypes: false, ...options },
     comments,
-    containsJSX: false
+    containsJSX: false,
+    trailingLines: 0
   };
-  traverse(ast, transform, null, state);
-
-  if (options && options.debug) {
-    console.log(JSON.stringify(ast, null, 4));
-  }
+  traverse<VisitorState>(ast, transform, undefined, state);
 
   // we pass flowCode so that generate can compute source maps
   // if we ever decide to
@@ -61,12 +59,12 @@ const convert = (flowCode, options) => {
   if (options && options.prettier) {
     const prettierUserConfig =
       typeof options.prettier !== "boolean"
-        ? prettier.resolveConfig.sync(null, { config: options.prettier })
+        ? prettier.resolveConfig.sync("", { config: options.prettier })
         : {};
 
-    const prettierOptions = {
+    const prettierOptions: PrettierOptions = {
       parser: "typescript",
-      plugins,
+      plugins: [prettierTSPlugin],
       semi: options.semi,
       singleQuote: options.singleQuote,
       tabWidth: options.tabWidth,
@@ -89,4 +87,4 @@ const convert = (flowCode, options) => {
   return { state, code: tsCode };
 };
 
-module.exports = convert;
+export default convert;

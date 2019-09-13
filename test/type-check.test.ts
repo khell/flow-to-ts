@@ -1,13 +1,12 @@
-const ts = require("typescript");
-const tmp = require("tmp");
-const fs = require("fs");
-const path = require("path");
-const { execFile, spawnSync } = require("child_process");
-const flow = require("flow-bin");
+import ts from "typescript";
+import tmp from "tmp";
+import fs from "fs";
+import path from "path";
+import { execFile, spawnSync } from "child_process";
+import flow from "flow-bin";
 
-require("./matchers.js");
-
-const convert = require("../src/convert.js");
+import "./matchers";
+import convert from "../src/convert";
 
 const tsOptions = {
   filename: "foo.ts",

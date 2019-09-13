@@ -1,24 +1,25 @@
-const path = require("path");
-const tmp = require("tmp");
-const fs = require("fs");
-const fsReadDirRecursive = require("fs-readdir-recursive");
-const mockConsole = require("jest-mock-console").default;
-const mockProcess = require("jest-mock-process");
+import fs from "fs";
+import path from "path";
+import tmp from "tmp";
+import fsReadDirRecursive from "fs-readdir-recursive";
+import mockConsole from "jest-mock-console";
+import { mockProcessExit, mockProcessStdout } from "jest-mock-process";
 
-const cli = require("../src/cli.js");
+import cli from "../src/cli";
 
 // cleanup temp dir automatically in case of an exception
 tmp.setGracefulCleanup();
 
 describe("cli", () => {
   const fixturesPath = path.join(__dirname, "fixtures", "cli");
+  const flowToTsPath = path.join(__dirname, "../dist/src/flow-to-ts.js");
 
-  let mockExit;
-  let tmpdir;
-  let tmpobj;
+  let mockExit: ReturnType<typeof mockProcessExit>;
+  let tmpobj: ReturnType<typeof tmp.dirSync>;
+  let tmpdir: string;
 
   beforeAll(() => {
-    mockExit = mockProcess.mockProcessExit();
+    mockExit = mockProcessExit();
   });
 
   beforeEach(() => {
@@ -38,10 +39,10 @@ describe("cli", () => {
   it("should exit with code one when no files have been provided", () => {
     // Arrange
     mockConsole();
-    const mockStdout = mockProcess.mockProcessStdout();
+    const mockStdout = mockProcessStdout();
 
     // Act
-    cli(["node", path.join(__dirname, "../flow-to-ts.js")]);
+    cli(["node", flowToTsPath]);
 
     // Assert
     expect(mockExit).toHaveBeenCalledWith(1);
@@ -56,7 +57,7 @@ describe("cli", () => {
     fs.writeFileSync(inputPath, "const a: number = 5;", "utf-8");
 
     // Act
-    cli(["node", path.join(__dirname, "../flow-to-ts.js"), inputPath]);
+    cli(["node", flowToTsPath, inputPath]);
 
     // Assert
     expect(console.log).toHaveBeenCalledWith("const a: number = 5;");
@@ -69,7 +70,7 @@ describe("cli", () => {
     fs.writeFileSync(inputPath, "const a: number = 5;", "utf-8");
 
     // Act
-    cli(["node", path.join(__dirname, "../flow-to-ts.js"), inputPath]);
+    cli(["node", flowToTsPath, inputPath]);
 
     // Assert
     const outputPath = path.join(tmpdir, "test.ts");
@@ -83,7 +84,7 @@ describe("cli", () => {
     fs.writeFileSync(inputPath, "?", "utf-8");
 
     // Act
-    cli(["node", path.join(__dirname, "../flow-to-ts.js"), inputPath]);
+    cli(["node", flowToTsPath, inputPath]);
 
     // Assert
     expect(console.error).toHaveBeenCalledWith(
@@ -99,7 +100,7 @@ describe("cli", () => {
     // Act
     cli([
       "node",
-      path.join(__dirname, "../flow-to-ts.js"),
+      flowToTsPath,
       "--write",
       inputPath
     ]);
@@ -122,7 +123,7 @@ describe("cli", () => {
     );
 
     // Act
-    cli(["node", path.join(__dirname, "../flow-to-ts.js"), "--write", tmpdir]);
+    cli(["node", flowToTsPath, "--write", tmpdir]);
 
     // Assert
     expect(fs.existsSync(path.join(tmpdir, "foo.ts"))).toBe(true);
@@ -138,7 +139,7 @@ describe("cli", () => {
     // Act
     cli([
       "node",
-      path.join(__dirname, "../flow-to-ts.js"),
+      flowToTsPath,
       "--write",
       "--delete-source",
       inputPath
@@ -165,7 +166,7 @@ describe("cli", () => {
     // Act
     cli([
       "node",
-      path.join(__dirname, "../flow-to-ts.js"),
+      flowToTsPath,
       "--write",
       "--delete-source",
       tmpdir
@@ -187,7 +188,7 @@ describe("cli", () => {
     // Act
     cli([
       "node",
-      path.join(__dirname, "../flow-to-ts.js"),
+      flowToTsPath,
       "--write",
       inputPath
     ]);
@@ -210,7 +211,7 @@ describe("cli", () => {
     // Act
     cli([
       "node",
-      path.join(__dirname, "../flow-to-ts.js"),
+      flowToTsPath,
       "--prettier",
       "--write",
       "--write-path",
@@ -238,7 +239,7 @@ describe("cli", () => {
     // Act
     cli([
       "node",
-      path.join(__dirname, "../flow-to-ts.js"),
+      flowToTsPath,
       "--prettier",
       prettierConfigPath,
       "--write",
@@ -260,7 +261,7 @@ describe("cli", () => {
     // Act
     cli([
       "node",
-      path.join(__dirname, "../flow-to-ts.js"),
+      flowToTsPath,
       "--input-pattern",
       "^EXACTMATCH$",
       "--write",
@@ -282,7 +283,7 @@ describe("cli", () => {
     // Act
     cli([
       "node",
-      path.join(__dirname, "../flow-to-ts.js"),
+      flowToTsPath,
       "--write",
       "--write-path",
       tmpdir,
@@ -302,7 +303,7 @@ describe("cli", () => {
     // Act
     cli([
       "node",
-      path.join(__dirname, "../flow-to-ts.js"),
+      flowToTsPath,
       "--write",
       "--write-path",
       tmpdir,

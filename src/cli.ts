@@ -1,15 +1,28 @@
-const commander = require("commander");
-const fs = require("fs");
-const fsReadDirRecursive = require("fs-readdir-recursive");
-const glob = require("glob");
-const path = require("path");
+import commander from "commander";
+import fs from "fs";
+import fsReadDirRecursive from "fs-readdir-recursive";
+import path from "path";
+import { ParserOptions } from "prettier";
 
-const convert = require("./convert.js");
+import convert from "./convert";
 const version = require("../package.json").version;
 
-const cli = argv => {
-  const program = new commander.Command();
+export type CliOptions = {
+  inlineUtilityTypes: boolean,
+  prettier: boolean
+  semi: boolean,
+  singleQuote: boolean,
+  tabWidth: 2 | 4,
+  trailingComma: ParserOptions['trailingComma'],
+  bracketSpacing: boolean,
+  arrowParens: ParserOptions['arrowParens'],
+  printWidth: number,
+  inputPattern: string,
+  outputExtension: string
+};
 
+const cli = (argv: string[]) => {
+  const program = new commander.Command();
   program
     .version(version)
     .option("--inline-utility-types", "inline utility types when possible")
@@ -88,12 +101,12 @@ const cli = argv => {
     return;
   }
 
-  const options = {
+  const options: CliOptions = {
     inlineUtilityTypes: Boolean(program.inlineUtilityTypes),
     prettier: program.prettier,
     semi: Boolean(program.semi),
     singleQuote: Boolean(program.singleQuote),
-    tabWidth: parseInt(program.tabWidth),
+    tabWidth: parseInt(program.tabWidth, 10) === 2 ? 2 : 4,
     trailingComma: program.trailingComma,
     bracketSpacing: Boolean(program.bracketSpacing),
     arrowParens: program.arrowParens,
@@ -102,7 +115,7 @@ const cli = argv => {
     outputExtension: program.outputExtension
   };
 
-  let inputPattern;
+  let inputPattern: RegExp;
   try {
     inputPattern = new RegExp(options.inputPattern);
   } catch (error) {
@@ -152,4 +165,4 @@ const cli = argv => {
   }
 };
 
-module.exports = cli;
+export default cli;

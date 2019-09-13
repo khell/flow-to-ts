@@ -1,49 +1,104 @@
-const path = require("path");
-const t = require("@babel/types");
+import * as t from "@babel/types";
+import { NodePath } from "@babel/core";
+import { Visitor } from "@babel/traverse";
 
-const computeNewlines = require("./compute-newlines.js");
+import { CliOptions } from "./cli";
+import computeNewlines from "./compute-newlines";
+import {
+  typeAnnotationToTSType,
+  toTSType,
+  toTSTypeArray,
+  toTSEntityName,
+  toTSTypeParameterInstantiation,
+  toTSTypeParameterDeclaration,
+  hasTypeAnnotation
+} from "./util-transforms";
 
-const locToString = loc =>
-  `${loc.start.line}:${loc.start.column}-${loc.end.line}:${loc.end.column}`;
+export type VisitorState = {
+  usedUtilityTypes: Set<string>;
+  options: Partial<CliOptions>;
+  comments: { [key: string]: t.File["comments"] };
+  containsJSX: boolean;
+  trailingLines: number;
+};
+
+type TodoAny = any;
+
+const BaseNodeDefaultSpreadTypes = {
+  leadingComments: null,
+  innerComments: null,
+  trailingComments: null,
+  newlines: undefined,
+  start: null,
+  end: null,
+  loc: null
+};
+
+const locToString = (loc: t.SourceLocation | null) =>
+  loc
+    ? `${loc.start.line}:${loc.start.column}-${loc.end.line}:${loc.end.column}`
+    : "";
 
 // TODO: figure out how to template these inline definitions
 const utilityTypes = {
-  $Keys: typeAnnotation => {
+  $Keys: (
+    typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation
+  ): t.TSTypeOperator => ({
     // TODO: patch @babel/types - tsTypeOperator should accept two arguments
     // return t.tsTypeOperator(typeAnnotation, "keyof");
-    return {
-      type: "TSTypeOperator",
-      typeAnnotation,
-      operator: "keyof"
-    };
-  },
-  $Values: typeAnnotation => {
+    type: "TSTypeOperator",
+    typeAnnotation: typeAnnotationToTSType(typeAnnotation),
+    operator: "keyof",
+    ...BaseNodeDefaultSpreadTypes
+  }),
+
+  $Values: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
+    const tsType = typeAnnotationToTSType(typeAnnotation);
     return t.tsIndexedAccessType(
-      typeAnnotation,
-      {
-        type: "TSTypeOperator",
-        typeAnnotation,
-        operator: "keyof"
-      }
+      tsType,
       // TODO: patch @babel/types - tsTypeOperator should accept two arguments
       //t.tsTypeOperator(typeAnnotation, "keyof"),
+      {
+        type: "TSTypeOperator",
+        typeAnnotation: tsType,
+        operator: "keyof",
+        ...BaseNodeDefaultSpreadTypes
+      }
     );
   },
-  $ReadOnly: typeAnnotation => {
+
+  $ReadOnly: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
     const typeName = t.identifier("Readonly");
-    const typeParameters = t.tsTypeParameterInstantiation([typeAnnotation]);
+    const typeParameters = t.tsTypeParameterInstantiation([
+      typeAnnotationToTSType(typeAnnotation)
+    ]);
     return t.tsTypeReference(typeName, typeParameters);
   },
-  $Shape: typeAnnotation => {
+
+  $Shape: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
     const typeName = t.identifier("Partial");
-    const typeParameters = t.tsTypeParameterInstantiation([typeAnnotation]);
+    const typeParameters = t.tsTypeParameterInstantiation([
+      typeAnnotationToTSType(typeAnnotation)
+    ]);
     return t.tsTypeReference(typeName, typeParameters);
   },
-  $NonMaybeType: typeAnnotation => {
+
+  $NonMaybeType: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
     const typeName = t.identifier("NonNullable");
-    const typeParameters = t.tsTypeParameterInstantiation([typeAnnotation]);
+    const typeParameters = t.tsTypeParameterInstantiation([
+      typeAnnotationToTSType(typeAnnotation)
+    ]);
     return t.tsTypeReference(typeName, typeParameters);
   },
+
+  $ReadOnlyArray: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
+    const typeName = t.identifier("ReadonlyArray");
+    const typeParameters = t.tsTypeParameterInstantiation([
+      typeAnnotationToTSType(typeAnnotation)
+    ]);
+    return t.tsTypeReference(typeName, typeParameters);
+  },
+
   Class: null, // TODO
 
   // These are two complicate to inline so we'll leave them as imports
@@ -52,6 +107,10 @@ const utilityTypes = {
   $ElementType: null,
   $Call: null
 };
+
+const alwaysInlineUtilityTypes: (keyof typeof utilityTypes)[] = [
+  "$ReadOnlyArray"
+];
 
 // Mapping between React types for Flow and those for TypeScript.
 const UnqualifiedReactTypeNameMap = {
@@ -88,70 +147,99 @@ const QualifiedReactTypeNameMap = {
   ElementProps: "ComponentProps"
 };
 
-const ImportSpecifierReactTypeNameMap = {
+type ImportSpecifierReactTypeNameMapType = {
+  [key: string]:
+    | string
+    | ((
+        path: NodePath<t.ImportDeclaration>,
+        specifier:
+          | t.ImportSpecifier
+          | t.ImportDefaultSpecifier
+          | t.ImportNamespaceSpecifier
+      ) => void);
+};
+
+const ImportSpecifierReactTypeNameMap: ImportSpecifierReactTypeNameMapType = {
   ...QualifiedReactTypeNameMap,
   ElementConfig: (path, specifier) => {
     // Implements this equivalent TS type:
     // type ElementConfig<C extends React.JSXElementConstructor<any>> = JSX.LibraryManagedAttributes<C, React.ComponentProps<C>>;
     const referencePaths = path.scope.bindings.ElementConfig.referencePaths;
-    for (referencePath of referencePaths) {
+    for (const referencePath of referencePaths) {
       const parentPath = referencePath.parentPath;
-      parentPath.replaceWith(
-        t.tsTypeReference(
-          t.tsQualifiedName(
-            t.identifier("JSX"),
-            t.identifier("LibraryManagedAttributes")
-          ),
-          t.tsTypeParameterInstantiation([
-            t.tsTypeQuery(parentPath.node.typeParameters.params[0].argument.id),
-            t.tsTypeReference(
-              t.identifier("ComponentProps"),
-              t.tsTypeParameterInstantiation([
-                t.tsTypeQuery(
-                  parentPath.node.typeParameters.params[0].argument.id
-                )
-              ])
-            )
-          ])
-        )
-      );
+      const parentNode = parentPath.node;
+      if (typeof (parentNode as any).typeParameters !== "undefined") {
+        parentPath.replaceWith(
+          t.tsTypeReference(
+            t.tsQualifiedName(
+              t.identifier("JSX"),
+              t.identifier("LibraryManagedAttributes")
+            ),
+            t.tsTypeParameterInstantiation([
+              t.tsTypeQuery(
+                (parentNode as any).typeParameters.params[0].argument.id
+              ),
+              t.tsTypeReference(
+                t.identifier("ComponentProps"),
+                t.tsTypeParameterInstantiation([
+                  t.tsTypeQuery(
+                    (parentNode as any).typeParameters.params[0].argument.id
+                  )
+                ])
+              )
+            ])
+          )
+        );
+      }
     }
     path.scope.rename("ElementConfig", "ComponentProps");
-    specifier.imported = specifier.local;
+    if (specifier.type === "ImportSpecifier") {
+      specifier.imported = specifier.local;
+    }
   },
+
   ElementRef: (path, specifier) => {
     const referencePaths = path.scope.bindings.ElementRef.referencePaths;
-    for (referencePath of referencePaths) {
+    for (const referencePath of referencePaths) {
       const parentPath = referencePath.parentPath;
-      parentPath.replaceWith(
-        t.tsTypeReference(
-          parentPath.node.id,
-          t.tsTypeParameterInstantiation(
-            parentPath.node.typeParameters.params.map(paramNode => {
-              if (t.isStringLiteralTypeAnnotation(paramNode)) {
-                console.warn(
-                  `===> Downgrading ElementRef JSX intrinsic type '${
-                    paramNode.value
-                  }' to Element. You can manually replace with a more specific type.`
-                );
-                return t.tsTypeReference(t.identifier("Element"));
-              } else if (t.isGenericTypeAnnotation(paramNode)) {
-                return t.tsTypeReference(paramNode.id);
-              } else if (t.isTypeofTypeAnnotation(paramNode)) {
-                return t.tsTypeQuery(paramNode.argument.id);
-              }
-              return paramNode;
-            })
+      const parentNode: any = parentPath.node;
+
+      if (
+        typeof parentNode.id !== undefined &&
+        typeof parentNode.typeParameters !== "undefined"
+      ) {
+        parentPath.replaceWith(
+          t.tsTypeReference(
+            parentNode.id,
+            t.tsTypeParameterInstantiation(
+              parentNode.typeParameters.params.map(paramNode => {
+                if (t.isStringLiteralTypeAnnotation(paramNode)) {
+                  console.warn(
+                    `===> Downgrading ElementRef JSX intrinsic type '${paramNode.value}' to Element. You can manually replace with a more specific type.`
+                  );
+                  return t.tsTypeReference(t.identifier("Element"));
+                } else if (t.isGenericTypeAnnotation(paramNode)) {
+                  return t.tsTypeReference(toTSEntityName(paramNode.id));
+                } else if (t.isTypeofTypeAnnotation(paramNode)) {
+                  return t.tsTypeQuery(
+                    (toTSType(paramNode.argument) as any).id
+                  );
+                }
+                return paramNode;
+              })
+            )
           )
-        )
-      );
+        );
+      }
     }
     path.scope.rename("ElementRef", "RefObject");
-    specifier.imported = specifier.local;
+    if (specifier.type === "ImportSpecifier") {
+      specifier.imported = specifier.local;
+    }
   }
 };
 
-const transform = {
+const transform: Visitor<VisitorState> = {
   Program: {
     enter(path, state) {
       const { body } = path.node;
@@ -165,13 +253,18 @@ const transform = {
         if (i === 0 && t.isVariableDeclaration(stmt)) {
           if (stmt.leadingComments && stmt.leadingComments[0]) {
             const firstComment = stmt.leadingComments[0];
-            for (
-              let i = firstComment.loc.end.line + 1;
-              i < stmt.loc.start.line;
-              i++
-            ) {
-              if (state.comments.startLine[i]) {
-                stmt.leadingComments.push(state.comments.startLine[i]);
+            if (stmt.loc) {
+              for (
+                let i = firstComment.loc.end.line + 1;
+                i < stmt.loc.start.line;
+                i++
+              ) {
+                if (state.comments.startLine[i]) {
+                  stmt.leadingComments = [
+                    ...stmt.leadingComments,
+                    state.comments.startLine[i]
+                  ];
+                }
               }
             }
           }
@@ -212,11 +305,15 @@ const transform = {
         const source = t.stringLiteral("utility-types");
         const importDeclaration = t.importDeclaration(specifiers, source);
         path.node.body = [importDeclaration, ...path.node.body];
-        path.node.newlines = [
-          [], // place the new import at the start of the file
-          [undefined, ...path.node.newlines[0]],
-          ...path.node.newlines.slice(1)
-        ];
+        if (path.node.newlines) {
+          path.node.newlines = [
+            [], // place the new import at the start of the file
+            [undefined, ...path.node.newlines[0]],
+            ...path.node.newlines.slice(1)
+          ];
+        } else {
+          path.node.newlines = [[], [undefined]];
+        }
       }
     }
   },
@@ -327,7 +424,7 @@ const transform = {
   TypeAnnotation: {
     exit(path) {
       const { typeAnnotation } = path.node;
-      path.replaceWith(t.tsTypeAnnotation(typeAnnotation));
+      path.replaceWith(t.tsTypeAnnotation(toTSType(typeAnnotation)));
     }
   },
   NullableTypeAnnotation: {
@@ -335,10 +432,12 @@ const transform = {
       const { typeAnnotation } = path.node;
       path.replaceWith(
         t.tsUnionType([
-          // conditionally unwrap TSTypeAnnotation nodes
-          t.isTSTypeAnnotation(typeAnnotation)
-            ? typeAnnotation.typeAnnotation
-            : typeAnnotation,
+          toTSType(
+            // conditionally unwrap TSTypeAnnotation nodes
+            t.isTSTypeAnnotation(typeAnnotation)
+              ? typeAnnotation.typeAnnotation
+              : typeAnnotation
+          ),
           t.tsNullKeyword(),
           t.tsUndefinedKeyword()
         ])
@@ -348,52 +447,60 @@ const transform = {
   ArrayTypeAnnotation: {
     exit(path) {
       const { elementType } = path.node;
-      path.replaceWith(t.tsArrayType(elementType));
+      path.replaceWith(t.tsArrayType(toTSType(elementType)));
     }
   },
   TupleTypeAnnotation: {
     exit(path) {
       const { types } = path.node;
       const elementTypes = types;
-      path.replaceWith(t.tsTupleType(elementTypes));
+      path.replaceWith(t.tsTupleType(toTSTypeArray(elementTypes)));
     }
   },
   FunctionTypeAnnotation: {
     exit(path) {
       const { typeParameters, params, rest, returnType } = path.node;
-      const parameters = params.map((param, index) => {
-        if (param.name === "") {
-          return {
-            ...param,
-            name: `arg${index}`
-          };
-        } else {
-          return param;
+      const parameters: (t.Identifier | t.RestElement)[] = params.map(
+        (param: t.Node, index): t.Identifier => {
+          // Param should have been transformed to an Identifier in FunctionTypeParam
+          // visitor.
+          if (param.type !== "Identifier") {
+            throw new Error("Identifier transformation did not take occur");
+          }
+          return { ...param, name: param.name || `arg${index}` };
         }
-      });
-      if (rest) {
-        const restElement = {
+      );
+
+      const restNode: t.Node | null = rest as any;
+      if (restNode && restNode.type === "Identifier") {
+        const restElement: t.RestElement = {
           type: "RestElement",
-          argument: rest,
+          argument: restNode,
           decorators: [], // flow doesn't support decorators
-          typeAnnotation: rest.typeAnnotation
+          typeAnnotation: restNode.typeAnnotation,
+          ...BaseNodeDefaultSpreadTypes
         };
         // TODO: patch @babel/types - t.restElement omits typeAnnotation
         // const restElement = t.restElement(rest, [], rest.typeAnnotation);
         parameters.push(restElement);
-        delete rest.typeAnnotation;
+        delete restNode.typeAnnotation;
       }
-      const typeAnnotation = t.tsTypeAnnotation(returnType);
+      const typeAnnotation = t.tsTypeAnnotation(toTSType(returnType));
+
+      const parentNode = path.parentPath && path.parentPath.node;
+      let tsReplacementType:
+        | t.TSFunctionType
+        | t.TSParenthesizedType = t.tsFunctionType(
+        typeParameters
+          ? toTSTypeParameterDeclaration(typeParameters)
+          : typeParameters,
+        parameters,
+        typeAnnotation
+      );
 
       // In a Flow ObjectTypeAnnotation, it is acceptable to have a property
       // union or intersection type contain a unparenthesized function type.
       // This is not acceptable with TS.
-      const parentNode = path.parentPath && path.parentPath.node;
-      let tsReplacementType = t.tsFunctionType(
-        typeParameters,
-        parameters,
-        typeAnnotation
-      );
       if (
         parentNode &&
         (t.isUnionTypeAnnotation(parentNode) ||
@@ -409,13 +516,22 @@ const transform = {
   },
   FunctionTypeParam: {
     exit(path) {
+      // Transforms all FunctionTypeParam => Identifier
+      // TypeScript AST simplifies these annotations in a single TSFunctionType
       const { name, optional, typeAnnotation } = path.node;
-      const decorators = []; // flow doesn't support decorators
-      const identifier = {
+      const identifier: t.Identifier = {
         type: "Identifier",
         name: name ? name.name : "",
         optional,
-        typeAnnotation: t.tsTypeAnnotation(typeAnnotation)
+        typeAnnotation: t.tsTypeAnnotation(toTSType(typeAnnotation)),
+        decorators: [],
+        leadingComments: null,
+        innerComments: null,
+        trailingComments: null,
+        start: null,
+        end: null,
+        loc: null,
+        newlines: undefined
       };
       // TODO: patch @babel/types - t.identifier omits typeAnnotation
       // const identifier = t.identifier(name.name, decorators, optional, t.tsTypeAnnotation(typeAnnotation));
@@ -424,30 +540,29 @@ const transform = {
   },
   TypeParameterInstantiation: {
     exit(path) {
-      const { params } = path.node;
-      path.replaceWith(t.tsTypeParameterInstantiation(params));
+      path.replaceWith(toTSTypeParameterInstantiation(path.node));
     }
   },
   TypeParameterDeclaration: {
     exit(path) {
-      const { params } = path.node;
-      path.replaceWith(t.tsTypeParameterDeclaration(params));
+      path.replaceWith(toTSTypeParameterDeclaration(path.node));
     }
   },
   TypeParameter: {
     exit(path) {
-      const { name, variance, bound } = path.node;
+      const { name, variance, bound, default: defaultProperty } = path.node;
       if (variance) {
         console.warn(
           "===> TypeScript doesn't support variance on type parameters"
         );
       }
 
-      const typeParameter = {
+      const typeParameter: t.TSTypeParameter = {
         type: "TSTypeParameter",
-        constraint: bound && bound.typeAnnotation,
-        default: path.node.default,
-        name
+        constraint: bound ? toTSType(bound.typeAnnotation) : bound,
+        default: defaultProperty ? toTSType(defaultProperty) : defaultProperty,
+        name: name || "",
+        ...BaseNodeDefaultSpreadTypes
       };
 
       // Flow: <T>() => {}
@@ -468,49 +583,55 @@ const transform = {
   },
   GenericTypeAnnotation: {
     exit(path, state) {
-      const { id, typeParameters } = path.node;
-
-      const typeName = id;
-      // utility-types doesn't have a definition for $ReadOnlyArray
-      // TODO: add one
-      if (typeName.name === "$ReadOnlyArray") {
-        typeName.name = "ReadonlyArray";
-      }
-
-      if (typeName.name in utilityTypes) {
+      const { id: idNode, typeParameters } = path.node;
+      const id:
+        | t.Identifier
+        | t.QualifiedTypeIdentifier
+        | t.TSQualifiedName = idNode as any;
+      if (id.type === "Identifier" && id.name in utilityTypes) {
         if (
-          state.options.inlineUtilityTypes &&
-          typeof utilityTypes[typeName.name] === "function"
+          typeParameters &&
+          (alwaysInlineUtilityTypes.find(p => p === id.name) ||
+            state.options.inlineUtilityTypes) &&
+          typeof utilityTypes[id.name] === "function"
         ) {
-          const inline = utilityTypes[typeName.name];
+          const inline = utilityTypes[id.name];
           path.replaceWith(inline(...typeParameters.params));
           return;
         } else {
-          state.usedUtilityTypes.add(typeName.name);
+          state.usedUtilityTypes.add(id.name);
         }
       }
 
-      if (typeName.name in UnqualifiedReactTypeNameMap) {
+      const tsTypeParameterInstantiation = typeParameters
+        ? toTSTypeParameterInstantiation(typeParameters)
+        : typeParameters;
+      if (id.type === "Identifier" && id.name in UnqualifiedReactTypeNameMap) {
         // TODO: make sure that React was imported in this file
+        // This will leave future visits with some id nodes as TSQualifiedName
         path.replaceWith(
           t.tsTypeReference(
             t.tsQualifiedName(
               t.identifier("React"),
-              t.identifier(UnqualifiedReactTypeNameMap[typeName.name])
+              t.identifier(UnqualifiedReactTypeNameMap[id.name])
             ),
-            typeParameters
+            tsTypeParameterInstantiation
           )
         );
-      } else {
-        path.replaceWith(t.tsTypeReference(typeName, typeParameters));
+      } else if (id.type !== "QualifiedTypeIdentifier") {
+        console.assert(
+          id.type === "Identifier" || id.type === "TSQualifiedName"
+        );
+        path.replaceWith(t.tsTypeReference(id, tsTypeParameterInstantiation));
       }
     }
   },
   QualifiedTypeIdentifier: {
     exit(path) {
-      const { qualification, id } = path.node;
-      const left = qualification;
-      const right = id;
+      const { qualification: left, id: right } = path.node;
+      if (left.type !== "Identifier") {
+        return;
+      }
 
       if (left.name === "React" && right.name in QualifiedReactTypeNameMap) {
         path.replaceWith(
@@ -526,9 +647,17 @@ const transform = {
   },
   ObjectTypeProperty: {
     exit(path) {
-      const { key, value, optional, variance, kind, method } = path.node; // TODO: static, kind
+      const {
+        key,
+        value: valueNode,
+        optional,
+        variance,
+        kind,
+        method
+      } = path.node; // TODO: static, kind
+      const value = toTSType(valueNode);
       const typeAnnotation = t.tsTypeAnnotation(value);
-      const initializer = undefined; // TODO: figure out when this used
+      const initializer = null; // TODO: figure out when this used
       const computed = false; // TODO: maybe set this to true for indexers
       const readonly = variance && variance.kind === "plus";
 
@@ -541,25 +670,33 @@ const transform = {
       }
 
       if (method) {
-        // TODO: assert value is a FunctionTypeAnnotation
-        const methodSignature = {
-          type: "TSMethodSignature",
-          key,
-          typeParameters: value.typeParameters,
-          parameters: value.parameters,
-          typeAnnotation: value.typeAnnotation,
-          computed,
-          optional
-        };
+        if (value.type === "TSFunctionType") {
+          const methodSignature: t.TSMethodSignature = {
+            ...BaseNodeDefaultSpreadTypes,
+            type: "TSMethodSignature",
+            key,
+            typeParameters: value.typeParameters
+              ? toTSTypeParameterDeclaration(value.typeParameters)
+              : value.typeParameters,
+            parameters: value.parameters,
+            typeAnnotation: value.typeAnnotation,
+            computed,
+            optional
+          };
+          path.replaceWith(methodSignature);
+        } else if (t.isFunctionTypeAnnotation(value)) {
+          // Conversion should have happened prior to reaching this
+          throw new Error("Unexpected type FunctionTypeAnnotation encountered");
+        }
         // TODO: patch @babel/types - tsMethodSignature ignores two out of the six params
         // const methodSignature = t.tsMethodSignature(key, value.typeParameters, value.parameters, value.typeAnnotation, computed, optional);
-        path.replaceWith(methodSignature);
       } else {
-        const propertySignature = {
+        const propertySignature: t.TSPropertySignature = {
+          ...BaseNodeDefaultSpreadTypes,
           type: "TSPropertySignature",
           key,
           typeAnnotation,
-          // initializer,
+          initializer,
           computed,
           optional,
           readonly
@@ -573,25 +710,28 @@ const transform = {
   ObjectTypeIndexer: {
     exit(path) {
       const { id, key, value, variance } = path.node;
-
       const readonly = variance && variance.kind === "plus";
       if (variance && variance.kind === "minus") {
         // TODO: include file and location of infraction
         console.warn("===> typescript doesn't support writeonly properties");
       }
 
-      const identifier = {
+      const identifier: t.Identifier = {
+        ...BaseNodeDefaultSpreadTypes,
         type: "Identifier",
         name: id ? id.name : "key",
-        typeAnnotation: t.tsTypeAnnotation(key)
+        typeAnnotation: t.tsTypeAnnotation(toTSType(key)),
+        decorators: null,
+        optional: null
       };
       // TODO: patch @babel/types - t.identifier omits typeAnnotation
       // const identifier = t.identifier(name.name, decorators, optional, t.tsTypeAnnotation(typeAnnotation));
 
-      const indexSignature = {
+      const indexSignature: t.TSIndexSignature = {
+        ...BaseNodeDefaultSpreadTypes,
         type: "TSIndexSignature",
         parameters: [identifier], // TODO: figure when multiple parameters are used
-        typeAnnotation: t.tsTypeAnnotation(value),
+        typeAnnotation: t.tsTypeAnnotation(toTSType(value)),
         readonly
       };
       // TODO: patch @babel/types - t.tsIndexSignature omits readonly
@@ -606,15 +746,16 @@ const transform = {
         // Workaround babylon bug where the last ObjectTypeProperty in an
         // ObjectTypeAnnotation doesn't have its trailingComments.
         // TODO: file a ticket for this bug
-        const trailingComments = [];
+        const trailingComments: t.File["comments"][] = [];
         const lastProp = properties[properties.length - 1];
-        for (let i = lastProp.loc.end.line; i < path.node.loc.end.line; i++) {
-          if (state.comments.startLine[i]) {
-            trailingComments.push(state.comments.startLine[i]);
+        if (lastProp.loc && path.node.loc) {
+          for (let i = lastProp.loc.end.line; i < path.node.loc.end.line; i++) {
+            if (state.comments.startLine[i]) {
+              trailingComments.push(state.comments.startLine[i]);
+            }
           }
         }
         lastProp.trailingComments = trailingComments;
-
         path.node.newlines = computeNewlines(path.node);
       }
     },
@@ -627,20 +768,20 @@ const transform = {
 
       // TODO: create multiple sets of elements so that we can convert
       // {x: number, ...T, y: number} to {x: number} & T & {y: number}
-      const elements = [];
-      const spreads = [];
+      const elements: t.TSTypeElement[] = [];
+      const spreads: t.TSType[] = [];
 
       for (const prop of properties) {
         if (t.isObjectTypeSpreadProperty(prop)) {
           const { argument } = prop;
-          spreads.push(argument);
+          spreads.push(toTSType(argument));
         } else {
-          elements.push(prop);
+          elements.push(prop as TodoAny);
         }
       }
 
       // TODO: maintain the position of indexers
-      elements.push(...indexers);
+      elements.push(...(indexers as TodoAny));
 
       if (spreads.length > 0 && elements.length > 0) {
         path.replaceWith(
@@ -658,27 +799,36 @@ const transform = {
   TypeAlias: {
     exit(path) {
       const { id, typeParameters, right } = path.node;
-
-      path.replaceWith(t.tsTypeAliasDeclaration(id, typeParameters, right));
+      path.replaceWith(
+        t.tsTypeAliasDeclaration(
+          id,
+          typeParameters
+            ? toTSTypeParameterDeclaration(typeParameters)
+            : typeParameters,
+          toTSType(right)
+        )
+      );
     }
   },
   IntersectionTypeAnnotation: {
     exit(path) {
       const { types } = path.node;
-      path.replaceWith(t.tsIntersectionType(types));
+      path.replaceWith(t.tsIntersectionType(toTSTypeArray(types)));
     }
   },
   UnionTypeAnnotation: {
     exit(path) {
       const { types } = path.node;
-      path.replaceWith(t.tsUnionType(types));
+      path.replaceWith(t.tsUnionType(toTSTypeArray(types)));
     }
   },
   TypeofTypeAnnotation: {
     exit(path) {
-      const { argument } = path.node;
+      const { argument: argumentNode } = path.node;
       // argument has already been converted from GenericTypeAnnotation to
       // TSTypeReference.
+      const argument: t.TSTypeReference = argumentNode as any;
+      console.assert(argument.type === "TSTypeReference");
       const exprName = argument.typeName;
       path.replaceWith(t.tsTypeQuery(exprName));
     }
@@ -696,32 +846,64 @@ const transform = {
       // const typeCastExpression = t.tsTypeCastExpression(expression, typeAnnotation);
       const tsAsExpression = t.tsAsExpression(
         expression,
-        typeAnnotation.typeAnnotation
+        toTSType(typeAnnotation.typeAnnotation)
       );
       path.replaceWith(tsAsExpression);
     }
   },
   InterfaceDeclaration: {
     exit(path) {
-      const { id, typeParameters } = path.node; // TODO: implements, mixins
-      const body = t.tsInterfaceBody(path.node.body.members);
-      const _extends =
-        path.node.extends.length > 0 ? path.node.extends : undefined;
+      const {
+        id,
+        typeParameters,
+        body: bodyNode,
+        extends: extendsNode
+      } = path.node; // TODO: implements, mixins
+      const body: t.TSTypeLiteral = bodyNode as any;
+      console.assert(t.isTSTypeLiteral(body));
+      const tsInterfaceBody = t.tsInterfaceBody(body.members);
+      const _extends: t.TSExpressionWithTypeArguments[] | undefined =
+        extendsNode && extendsNode.length > 0
+          ? (extendsNode as any)
+          : undefined;
       path.replaceWith(
-        t.tsInterfaceDeclaration(id, typeParameters, _extends, body)
+        t.tsInterfaceDeclaration(
+          id,
+          typeParameters
+            ? toTSTypeParameterDeclaration(typeParameters)
+            : typeParameters,
+          _extends,
+          tsInterfaceBody
+        )
       );
     }
   },
   InterfaceExtends: {
     exit(path) {
-      const { id, typeParameters } = path.node;
-      path.replaceWith(t.tsExpressionWithTypeArguments(id, typeParameters));
+      const { id: idNode, typeParameters } = path.node;
+      console.assert(!t.isQualifiedTypeIdentifier(idNode));
+      const id: t.Identifier | t.TSQualifiedName = idNode as any;
+      path.replaceWith(
+        t.tsExpressionWithTypeArguments(
+          id,
+          typeParameters
+            ? toTSTypeParameterInstantiation(typeParameters)
+            : typeParameters
+        )
+      );
     }
   },
   ClassImplements: {
     exit(path) {
       const { id, typeParameters } = path.node;
-      path.replaceWith(t.tsExpressionWithTypeArguments(id, typeParameters));
+      path.replaceWith(
+        t.tsExpressionWithTypeArguments(
+          id,
+          typeParameters
+            ? toTSTypeParameterInstantiation(typeParameters)
+            : typeParameters
+        )
+      );
     }
   },
   ImportDeclaration: {
@@ -729,13 +911,13 @@ const transform = {
       // Rename React imports that are directly imported
       if (path.node.source.value === "react") {
         for (const specifier of path.node.specifiers) {
-          if (specifier.imported) {
+          if (specifier.type === "ImportSpecifier" && specifier.imported) {
             const flowName = specifier.imported.name;
             const transformation = ImportSpecifierReactTypeNameMap[flowName];
             if (typeof transformation === "string") {
               path.scope.rename(
                 flowName,
-                ImportSpecifierReactTypeNameMap[flowName]
+                transformation
               );
               specifier.imported = specifier.local;
             } else if (typeof transformation === "function") {
@@ -755,7 +937,7 @@ const transform = {
   },
   ImportSpecifier: {
     exit(path) {
-      path.node.importKind = "value";
+      path.node.importKind = "value" as TodoAny;
     }
   },
   DeclareVariable: {
@@ -766,42 +948,46 @@ const transform = {
       // const declaration = t.variableDeclaration("var", [
       //   t.variableDeclarator(id),
       // ], true),
-
-      path.replaceWith({
+      const variableDeclaration: t.VariableDeclaration = {
+        ...BaseNodeDefaultSpreadTypes,
         type: "VariableDeclaration",
         kind: "var",
         declarations: [t.variableDeclarator(id)],
         declare: true
-      });
+      };
+      path.replaceWith(variableDeclaration);
     }
   },
   DeclareClass: {
     exit(path) {
-      const { id, body, typeParameters } = path.node;
+      const { id, body, typeParameters, extends: _extends } = path.node;
       const superClass =
-        path.node.extends.length > 0 ? path.node.extends[0] : undefined;
+        _extends && _extends.length > 0 ? _extends[0] : null;
 
       // TODO: patch @babel/types - t.classDeclaration omits typescript params
       // t.classDeclaration(id, superClass, body, [], false, true, [], undefined)
-
-      path.replaceWith({
+      const classDeclaration = {
         type: "ClassDeclaration",
         id,
         typeParameters,
-        superClass,
+        superClass: superClass as TodoAny,
         superClassTypeParameters: superClass
-          ? superClass.typeParameters
+          ? superClass.typeParameters as TodoAny
           : undefined,
-        body,
+        body: body as TodoAny,
         declare: true
-      });
+      };
+      path.replaceWith(classDeclaration as TodoAny);
     }
   },
   DeclareFunction: {
     exit(path) {
       const { id } = path.node;
       const { name, typeAnnotation } = id;
-
+      
+      if (!t.isTSTypeAnnotation(typeAnnotation) || !t.isTSFunctionType(typeAnnotation.typeAnnotation)) {
+        return;
+      }
       // TSFunctionType
       const functionType = typeAnnotation.typeAnnotation;
 
@@ -816,7 +1002,8 @@ const transform = {
       //   false, // generator
       // ),
 
-      path.replaceWith({
+      const tsDeclareFunction: t.TSDeclareFunction = {
+        ...BaseNodeDefaultSpreadTypes,
         type: "TSDeclareFunction",
         id: t.identifier(name),
         typeParameters: functionType.typeParameters,
@@ -824,34 +1011,41 @@ const transform = {
         returnType: functionType.typeAnnotation,
         declare: !t.isDeclareExportDeclaration(path.parent),
         async: false, // TODO
-        generator: false // TODO
-      });
+        generator: false, // TODO
+        predicate: null
+      };
+      path.replaceWith(tsDeclareFunction);
     }
   },
   DeclareExportDeclaration: {
     exit(path) {
       const { declaration, default: _default } = path.node;
-
-      path.replaceWith({
-        type: _default ? "ExportDefaultDeclaration" : "ExportNamedDeclaration",
-        declaration
-      });
+      if (_default) {
+        path.replaceWith({
+          type: "ExportDefaultDeclaration",
+          declaration
+        } as t.ExportDefaultDeclaration);
+      } else {
+        path.replaceWith({
+          type: "ExportNamedDeclaration",
+          declaration
+        } as t.ExportNamedDeclaration);
+      }
     }
   },
   OpaqueType: {
     exit(path, state) {
       state.usedUtilityTypes.add("Brand");
-      const { id, impltype, typeAnnotation } = path.node;
-
+      const { id, impltype } = path.node;
       // Convert declaration to utility-types' Brand type
       path.replaceWith(
         t.tsTypeAliasDeclaration(
           id,
-          typeAnnotation,
+          null,
           t.tsTypeReference(
             t.identifier("Brand"),
             t.tsTypeParameterInstantiation([
-              impltype,
+              toTSType(impltype),
               t.tsLiteralType(t.stringLiteral(id.name))
             ])
           )
@@ -872,16 +1066,18 @@ const transform = {
               t.isVariableDeclaration(path.node)
             );
 
-            if (variablePath) {
+            if (variablePath && t.isVariableDeclaration(variablePath.node)) {
               const { node } = variablePath;
               const declarations = node.declarations.map(n => {
-                let typeAnnotation;
+                let typeAnnotation: t.TSTypeReference | undefined;
                 // If this variable declaration is annotated with a type
-                if (n.id.typeAnnotation) {
+                if (hasTypeAnnotation(n.id) && n.id.typeAnnotation && !t.isNoop(n.id.typeAnnotation)) {
                   const flowTypeAnnotation = n.id.typeAnnotation.typeAnnotation;
                   switch (flowTypeAnnotation.type) {
                     case "GenericTypeAnnotation":
-                      typeAnnotation = t.tsTypeReference(flowTypeAnnotation.id);
+                      if (t.isIdentifier(flowTypeAnnotation.id)) {
+                        typeAnnotation = t.tsTypeReference(flowTypeAnnotation.id);
+                      }
                       break;
                     // TODO: tsAsExpression of the union type.
                     // Complexity here is that other types have not yet been converted at this traversal point.
@@ -889,15 +1085,13 @@ const transform = {
                     case "UnionTypeAnnotation":
                     default:
                       console.warn(
-                        `===> Skipping type conversion of opaque complex type ${
-                          flowTypeAnnotation.type
-                        }`
+                        `===> Skipping type conversion of opaque complex type ${flowTypeAnnotation.type}`
                       );
                   }
                 }
                 return t.variableDeclarator(
                   n.id,
-                  typeAnnotation
+                  typeAnnotation && n.init
                     ? t.tsAsExpression(n.init, typeAnnotation)
                     : n.init
                 );
@@ -914,13 +1108,13 @@ const transform = {
           if (arrowFunctionExpressionPath) {
             const { node } = arrowFunctionExpressionPath;
             // If this arrow function expression is annotated with a return type
-            if (node.returnType) {
-              const returnType = node.returnType.typeAnnotation.id; // TODO again only works for GenericTypeAnnotation
+            if (t.isArrowFunctionExpression(node) && node.returnType && !t.isNoop(node.returnType)) {
+              const returnType = (node.returnType.typeAnnotation as TodoAny).id; // TODO again only works for GenericTypeAnnotation
               if (returnType && returnType.name === id.name) {
                 if (t.isBlockStatement(node.body)) {
                   for (let i = 0; i < node.body.body.length; i++) {
                     const returnStatementBodyNode = node.body.body[i];
-                    if (t.isReturnStatement(returnStatementBodyNode)) {
+                    if (t.isReturnStatement(returnStatementBodyNode) && returnStatementBodyNode.argument) {
                       returnStatementBodyNode.argument = t.tsAsExpression(
                         returnStatementBodyNode.argument,
                         t.tsTypeReference(returnType)
@@ -957,10 +1151,10 @@ const transform = {
   // Alias for all JSX types
   // https://github.com/babel/babel/blob/master/packages/babel-types/src/definitions/jsx.js
   JSX: {
-    exit(path, state) {
+    exit(_, state) {
       state.containsJSX = true;
     }
   }
 };
 
-module.exports = transform;
+export default transform;

@@ -1,4 +1,4 @@
-const diff = require("jest-diff");
+import diff from "jest-diff";
 
 expect.extend({
   toMatchErrors(received, expected) {
@@ -12,9 +12,9 @@ expect.extend({
     });
     const pass = JSON.stringify(received) === JSON.stringify(expected);
 
-    const options = {
+    const options: any = {
       isNot: this.isNot,
-      promise: this.promise
+      promise: (this as any).promise
     };
 
     const message = pass
