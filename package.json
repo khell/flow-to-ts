@@ -16,7 +16,7 @@
   "dependencies": {
     "@babel/core": "^7.6.0",
     "@babel/parser": "^7.5.5",
-    "@babel/types": "^7.6.1",
+    "@babel/types": "npm:@khell/babel-types@^7.6.3",
     "@babel/generator": "npm:@khell/babel-generator@^7.6.0",
     "@babel/traverse": "npm:@khell/babel-traverse@^7.6.0",
     "commander": "^2.20.0",
@@ -37,6 +37,9 @@
     "pretty-quick": "^1.10.0",
     "tmp": "^0.1.0",
     "typescript": "^3.6.2"
+  },
+  "resolutions": {
+    "@babel/types": "npm:@khell/babel-types@7.6.3"
   },
   "scripts": {
     "test": "jest",
