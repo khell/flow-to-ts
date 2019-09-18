@@ -1,5 +1,6 @@
+import { $Diff } from "utility-types";
 
-import React, { ComponentProps, memo } from "react";
+import React, { ComponentProps, ComponentType, memo } from "react";
 
 type Props = {
   foo: string;
@@ -16,3 +17,5 @@ FooComponent.defaultProps = {
 };
 
 export default memo<JSX.LibraryManagedAttributes<typeof FooComponent, ComponentProps<typeof FooComponent>>>(FooComponent);
+
+const withRouter = <P extends {}, C extends ComponentType<P>>(WrappedComponent: C): ComponentType<$Diff<JSX.LibraryManagedAttributes<C, ComponentProps<C>>, {}>> => {};
