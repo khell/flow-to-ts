@@ -2,8 +2,24 @@ import fs from "fs";
 import path from "path";
 import tmp from "tmp";
 import fsReadDirRecursive from "fs-readdir-recursive";
-import mockConsole from "jest-mock-console";
 import { mockProcessExit, mockProcessStdout } from "jest-mock-process";
+import mockConsole from "jest-mock-console";
+import colors from "colors/safe";
+
+const interrupt = jest.fn();
+const tick = jest.fn();
+jest.mock(
+  "progress",
+  () =>
+    class ProgressBar {
+      interrupt() {
+        interrupt(...arguments);
+      }
+      tick() {
+        tick(...arguments);
+      }
+    }
+);
 
 import cli from "../src/cli";
 
@@ -15,16 +31,22 @@ describe("cli", () => {
   const flowToTsPath = path.join(__dirname, "../dist/src/flow-to-ts.js");
 
   let mockExit: ReturnType<typeof mockProcessExit>;
+  let mockStdout: ReturnType<typeof mockProcessStdout>;
+  let unmockConsole: ReturnType<typeof mockConsole>;
   let tmpobj: ReturnType<typeof tmp.dirSync>;
   let tmpdir: string;
 
   beforeAll(() => {
     mockExit = mockProcessExit();
+    mockStdout = mockProcessStdout();
+    unmockConsole = mockConsole();
   });
 
   beforeEach(() => {
     tmpobj = tmp.dirSync();
     tmpdir = tmpobj.name;
+    interrupt.mockClear();
+    tick.mockClear();
   });
 
   afterEach(() => {
@@ -34,25 +56,34 @@ describe("cli", () => {
 
   afterAll(() => {
     mockExit.mockRestore();
+    mockStdout.mockRestore();
+    unmockConsole();
   });
 
   it("should exit with code one when no files have been provided", () => {
-    // Arrange
-    mockConsole();
-    const mockStdout = mockProcessStdout();
-
     // Act
     cli(["node", flowToTsPath]);
 
     // Assert
     expect(mockExit).toHaveBeenCalledWith(1);
-    mockExit.mockRestore();
-    mockStdout.mockRestore();
   });
 
-  it("should console.log output", () => {
+  it("should output transpiled code via ProgressBar interrupt if logLevel allows it", () => {
     // Arrange
-    mockConsole();
+    const inputPath = path.join(tmpdir, "test.js");
+    fs.writeFileSync(inputPath, "const a: number = 5;", "utf-8");
+
+    // Act
+    cli(["node", flowToTsPath, "--log-level", "info", inputPath]);
+
+    // Assert
+    expect(interrupt).toHaveBeenCalledWith(
+      `${colors.green(inputPath)}\nconst a: number = 5;\n`
+    );
+  });
+
+  it("should output transpiled code via process.stdout if logLevel disallows it", () => {
+    // Arrange
     const inputPath = path.join(tmpdir, "test.js");
     fs.writeFileSync(inputPath, "const a: number = 5;", "utf-8");
 
@@ -60,12 +91,13 @@ describe("cli", () => {
     cli(["node", flowToTsPath, inputPath]);
 
     // Assert
-    expect(console.log).toHaveBeenCalledWith("const a: number = 5;");
+    expect(process.stdout.write).toHaveBeenCalledWith(
+      `${colors.green(inputPath)}\nconst a: number = 5;\n`
+    );
   });
 
   it("should not write a file", () => {
     // Arrange
-    mockConsole();
     const inputPath = path.join(tmpdir, "test.js");
     fs.writeFileSync(inputPath, "const a: number = 5;", "utf-8");
 
@@ -79,7 +111,6 @@ describe("cli", () => {
 
   it("should log any files with errors", () => {
     // Arrange
-    mockConsole();
     const inputPath = path.join(tmpdir, "test.js");
     fs.writeFileSync(inputPath, "?", "utf-8");
 
@@ -87,8 +118,12 @@ describe("cli", () => {
     cli(["node", flowToTsPath, inputPath]);
 
     // Assert
-    expect(console.error).toHaveBeenCalledWith(
-      `===> error processing ${inputPath}`
+    expect(interrupt).toHaveBeenCalledWith(
+      colors.red(
+        `Error processing ${colors.green(
+          inputPath
+        )}\nSyntaxError: Unexpected token (1:0)\n`
+      )
     );
   });
 
@@ -98,12 +133,7 @@ describe("cli", () => {
     fs.writeFileSync(inputPath, "const a: number = 5;", "utf-8");
 
     // Act
-    cli([
-      "node",
-      flowToTsPath,
-      "--write",
-      inputPath
-    ]);
+    cli(["node", flowToTsPath, "--write", inputPath]);
 
     // Assert
     expect(fs.existsSync(path.join(tmpdir, "test.ts"))).toBe(true);
@@ -137,13 +167,7 @@ describe("cli", () => {
     fs.writeFileSync(inputPath, "const a: number = 5;", "utf-8");
 
     // Act
-    cli([
-      "node",
-      flowToTsPath,
-      "--write",
-      "--delete-source",
-      inputPath
-    ]);
+    cli(["node", flowToTsPath, "--write", "--delete-source", inputPath]);
 
     // Assert
     expect(fs.existsSync(outputPath)).toBe(true);
@@ -164,13 +188,7 @@ describe("cli", () => {
     );
 
     // Act
-    cli([
-      "node",
-      flowToTsPath,
-      "--write",
-      "--delete-source",
-      tmpdir
-    ]);
+    cli(["node", flowToTsPath, "--write", "--delete-source", tmpdir]);
 
     // Assert
     expect(fs.existsSync(path.join(tmpdir, "foo.ts"))).toBe(true);
@@ -186,12 +204,7 @@ describe("cli", () => {
     fs.writeFileSync(inputPath, "const a: number = 5;", "utf-8");
 
     // Act
-    cli([
-      "node",
-      flowToTsPath,
-      "--write",
-      inputPath
-    ]);
+    cli(["node", flowToTsPath, "--write", inputPath]);
 
     // Assert
     const output = fs.readFileSync(outputPath, "utf-8");
@@ -314,6 +327,19 @@ describe("cli", () => {
     const writtenFiles = fsReadDirRecursive(tmpdir);
     expect(writtenFiles).toHaveLength(1);
     expect(writtenFiles[0]).toEqual("has-jsx.tsx");
+  });
+
+  it("should tick ProgressBar twice per file", () => {
+    // Arrange
+    const inputPath = path.join(tmpdir, "test.js");
+    fs.writeFileSync(inputPath, "const a: number = 5;", "utf-8");
+
+    // Act
+    cli(["node", flowToTsPath, "--log-level", "info", inputPath]);
+
+    // Assert
+    expect(tick).toHaveBeenNthCalledWith(1, 0, { file: inputPath });
+    expect(tick).toHaveBeenNthCalledWith(2);
   });
 
   // TODO: add tests for option handling

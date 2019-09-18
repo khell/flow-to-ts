@@ -155,7 +155,8 @@ type ImportSpecifierReactTypeNameMapType = {
         specifier:
           | t.ImportSpecifier
           | t.ImportDefaultSpecifier
-          | t.ImportNamespaceSpecifier
+          | t.ImportNamespaceSpecifier,
+        state: VisitorState
       ) => void);
 };
 
@@ -198,7 +199,7 @@ const ImportSpecifierReactTypeNameMap: ImportSpecifierReactTypeNameMapType = {
     }
   },
 
-  ElementRef: (path, specifier) => {
+  ElementRef: (path, specifier, state) => {
     const referencePaths = path.scope.bindings.ElementRef.referencePaths;
     for (const referencePath of referencePaths) {
       const parentPath = referencePath.parentPath;
@@ -214,9 +215,10 @@ const ImportSpecifierReactTypeNameMap: ImportSpecifierReactTypeNameMapType = {
             t.tsTypeParameterInstantiation(
               parentNode.typeParameters.params.map(paramNode => {
                 if (t.isStringLiteralTypeAnnotation(paramNode)) {
-                  console.warn(
-                    `===> Downgrading ElementRef JSX intrinsic type '${paramNode.value}' to Element. You can manually replace with a more specific type.`
-                  );
+                  state.options.logger &&
+                    state.options.logger.warn(
+                      `===> Downgrading ElementRef JSX intrinsic type '${paramNode.value}' to Element. You can manually replace with a more specific type.`
+                    );
                   return t.tsTypeReference(t.identifier("Element"));
                 } else if (t.isGenericTypeAnnotation(paramNode)) {
                   return t.tsTypeReference(toTSEntityName(paramNode.id));
@@ -373,8 +375,9 @@ const transform: Visitor<VisitorState> = {
   EmptyTypeAnnotation(path) {
     path.replaceWith(t.tsNeverKeyword());
   },
-  ExistsTypeAnnotation(path) {
-    console.warn("===> downgrading * to any");
+  ExistsTypeAnnotation(path, state) {
+    state.options.logger &&
+      state.options.logger.warn("===> downgrading * to any");
     path.replaceWith(t.tsAnyKeyword());
   },
 
@@ -395,27 +398,30 @@ const transform: Visitor<VisitorState> = {
   // It's okay to process these non-leaf nodes on enter()
   // since we're modifying them in a way doesn't affect
   // the processing of other nodes.
-  FunctionDeclaration(path) {
+  FunctionDeclaration(path, state) {
     if (path.node.predicate) {
-      console.warn(
-        `===> removing %checks at ${locToString(path.node.predicate.loc)}`
-      );
+      state.options.logger &&
+        state.options.logger.warn(
+          `===> removing %checks at ${locToString(path.node.predicate.loc)}`
+        );
       delete path.node.predicate;
     }
   },
-  FunctionExpression(path) {
+  FunctionExpression(path, state) {
     if (path.node.predicate) {
-      console.warn(
-        `===> removing %checks at ${locToString(path.node.predicate.loc)}`
-      );
+      state.options.logger &&
+        state.options.logger.warn(
+          `===> removing %checks at ${locToString(path.node.predicate.loc)}`
+        );
       delete path.node.predicate;
     }
   },
-  ArrowFunctionExpression(path) {
+  ArrowFunctionExpression(path, state) {
     if (path.node.predicate) {
-      console.warn(
-        `===> removing %checks at ${locToString(path.node.predicate.loc)}`
-      );
+      state.options.logger &&
+        state.options.logger.warn(
+          `===> removing %checks at ${locToString(path.node.predicate.loc)}`
+        );
       delete path.node.predicate;
     }
   },
@@ -549,12 +555,13 @@ const transform: Visitor<VisitorState> = {
     }
   },
   TypeParameter: {
-    exit(path) {
+    exit(path, state) {
       const { name, variance, bound, default: defaultProperty } = path.node;
       if (variance) {
-        console.warn(
-          "===> TypeScript doesn't support variance on type parameters"
-        );
+        state.options.logger &&
+          state.options.logger.warn(
+            "===> TypeScript doesn't support variance on type parameters"
+          );
       }
 
       const typeParameter: t.TSTypeParameter = {
@@ -646,7 +653,7 @@ const transform: Visitor<VisitorState> = {
     }
   },
   ObjectTypeProperty: {
-    exit(path) {
+    exit(path, state) {
       const {
         key,
         value: valueNode,
@@ -663,10 +670,16 @@ const transform: Visitor<VisitorState> = {
 
       if (variance && variance.kind === "minus") {
         // TODO: include file and location of infraction
-        console.warn("===> typescript doesn't support writeonly properties");
+        state.options.logger &&
+          state.options.logger.warn(
+            "===> typescript doesn't support writeonly properties"
+          );
       }
       if (kind !== "init") {
-        console.warn("===> we don't handle get() or set() yet, :P");
+        state.options.logger &&
+          state.options.logger.warn(
+            "===> we don't handle get() or set() yet, :P"
+          );
       }
 
       if (method) {
@@ -708,12 +721,15 @@ const transform: Visitor<VisitorState> = {
     }
   },
   ObjectTypeIndexer: {
-    exit(path) {
+    exit(path, state) {
       const { id, key, value, variance } = path.node;
       const readonly = variance && variance.kind === "plus";
       if (variance && variance.kind === "minus") {
         // TODO: include file and location of infraction
-        console.warn("===> typescript doesn't support writeonly properties");
+        state.options.logger &&
+          state.options.logger.warn(
+            "===> typescript doesn't support writeonly properties"
+          );
       }
 
       const identifier: t.Identifier = {
@@ -759,11 +775,12 @@ const transform: Visitor<VisitorState> = {
         path.node.newlines = computeNewlines(path.node);
       }
     },
-    exit(path) {
+    exit(path, state) {
       const { exact, properties, indexers } = path.node; // TODO: callProperties, inexact
 
       if (exact) {
-        console.warn("===> downgrading exact object type");
+        state.options.logger &&
+          state.options.logger.warn("===> downgrading exact object type");
       }
 
       // TODO: create multiple sets of elements so that we can convert
@@ -907,7 +924,7 @@ const transform: Visitor<VisitorState> = {
     }
   },
   ImportDeclaration: {
-    exit(path) {
+    exit(path, state) {
       // Rename React imports that are directly imported
       if (path.node.source.value === "react") {
         for (const specifier of path.node.specifiers) {
@@ -915,13 +932,10 @@ const transform: Visitor<VisitorState> = {
             const flowName = specifier.imported.name;
             const transformation = ImportSpecifierReactTypeNameMap[flowName];
             if (typeof transformation === "string") {
-              path.scope.rename(
-                flowName,
-                transformation
-              );
+              path.scope.rename(flowName, transformation);
               specifier.imported = specifier.local;
             } else if (typeof transformation === "function") {
-              transformation(path, specifier);
+              transformation(path, specifier, state);
             }
           }
         }
@@ -961,8 +975,7 @@ const transform: Visitor<VisitorState> = {
   DeclareClass: {
     exit(path) {
       const { id, body, typeParameters, extends: _extends } = path.node;
-      const superClass =
-        _extends && _extends.length > 0 ? _extends[0] : null;
+      const superClass = _extends && _extends.length > 0 ? _extends[0] : null;
 
       // TODO: patch @babel/types - t.classDeclaration omits typescript params
       // t.classDeclaration(id, superClass, body, [], false, true, [], undefined)
@@ -972,7 +985,7 @@ const transform: Visitor<VisitorState> = {
         typeParameters,
         superClass: superClass as TodoAny,
         superClassTypeParameters: superClass
-          ? superClass.typeParameters as TodoAny
+          ? (superClass.typeParameters as TodoAny)
           : undefined,
         body: body as TodoAny,
         declare: true
@@ -984,8 +997,11 @@ const transform: Visitor<VisitorState> = {
     exit(path) {
       const { id } = path.node;
       const { name, typeAnnotation } = id;
-      
-      if (!t.isTSTypeAnnotation(typeAnnotation) || !t.isTSFunctionType(typeAnnotation.typeAnnotation)) {
+
+      if (
+        !t.isTSTypeAnnotation(typeAnnotation) ||
+        !t.isTSFunctionType(typeAnnotation.typeAnnotation)
+      ) {
         return;
       }
       // TSFunctionType
@@ -1071,12 +1087,18 @@ const transform: Visitor<VisitorState> = {
               const declarations = node.declarations.map(n => {
                 let typeAnnotation: t.TSTypeReference | undefined;
                 // If this variable declaration is annotated with a type
-                if (hasTypeAnnotation(n.id) && n.id.typeAnnotation && !t.isNoop(n.id.typeAnnotation)) {
+                if (
+                  hasTypeAnnotation(n.id) &&
+                  n.id.typeAnnotation &&
+                  !t.isNoop(n.id.typeAnnotation)
+                ) {
                   const flowTypeAnnotation = n.id.typeAnnotation.typeAnnotation;
                   switch (flowTypeAnnotation.type) {
                     case "GenericTypeAnnotation":
                       if (t.isIdentifier(flowTypeAnnotation.id)) {
-                        typeAnnotation = t.tsTypeReference(flowTypeAnnotation.id);
+                        typeAnnotation = t.tsTypeReference(
+                          flowTypeAnnotation.id
+                        );
                       }
                       break;
                     // TODO: tsAsExpression of the union type.
@@ -1084,9 +1106,10 @@ const transform: Visitor<VisitorState> = {
                     // Don't want to repeat logic. Maybe move to other visitor.
                     case "UnionTypeAnnotation":
                     default:
-                      console.warn(
-                        `===> Skipping type conversion of opaque complex type ${flowTypeAnnotation.type}`
-                      );
+                      state.options.logger &&
+                        state.options.logger.warn(
+                          `===> Skipping type conversion of opaque complex type ${flowTypeAnnotation.type}`
+                        );
                   }
                 }
                 return t.variableDeclarator(
@@ -1108,13 +1131,20 @@ const transform: Visitor<VisitorState> = {
           if (arrowFunctionExpressionPath) {
             const { node } = arrowFunctionExpressionPath;
             // If this arrow function expression is annotated with a return type
-            if (t.isArrowFunctionExpression(node) && node.returnType && !t.isNoop(node.returnType)) {
+            if (
+              t.isArrowFunctionExpression(node) &&
+              node.returnType &&
+              !t.isNoop(node.returnType)
+            ) {
               const returnType = (node.returnType.typeAnnotation as TodoAny).id; // TODO again only works for GenericTypeAnnotation
               if (returnType && returnType.name === id.name) {
                 if (t.isBlockStatement(node.body)) {
                   for (let i = 0; i < node.body.body.length; i++) {
                     const returnStatementBodyNode = node.body.body[i];
-                    if (t.isReturnStatement(returnStatementBodyNode) && returnStatementBodyNode.argument) {
+                    if (
+                      t.isReturnStatement(returnStatementBodyNode) &&
+                      returnStatementBodyNode.argument
+                    ) {
                       returnStatementBodyNode.argument = t.tsAsExpression(
                         returnStatementBodyNode.argument,
                         t.tsTypeReference(returnType)
