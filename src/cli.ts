@@ -185,10 +185,12 @@ const cli = (argv: string[]) => {
                   `Warning processing ${colors.green(file)}\n${message}\n`
                 )
               ),
-      error: message =>
+      error: message => {
+        errorCount++;
         progressBar.interrupt(
           colors.red(`Error processing ${colors.green(file)}\n${message}\n`)
-        )
+        );
+      }
     };
 
     const inCode = fs.readFileSync(file, "utf-8");
@@ -219,7 +221,6 @@ const cli = (argv: string[]) => {
       }
     } catch (e) {
       logger.error(`${e}`);
-      errorCount++;
     }
 
     progressBar.tick();
@@ -231,7 +232,7 @@ const cli = (argv: string[]) => {
   }
   console.log(
     errorCount > 0
-      ? `Completed with ${errorCount} errors 😱.`
+      ? `Completed with ${errorCount} error${errorCount > 1 ? "s" : ""} 😱.`
       : "Completed transpilation 🚀."
   );
 };

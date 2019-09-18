@@ -78,9 +78,10 @@ const convert = (flowCode: string, options?: CliOptions) => {
     try {
       return { state, code: prettier.format(tsCode, prettierOptions).trim() };
     } catch (error) {
-      throw new Error(
-        `prettier-typescript could not parse the syntax of this file. Please correct it manually or raise a bug report.\n${error}`
-      );
+      options.logger &&
+        options.logger.error(
+          `prettier-typescript could not parse the syntax of this file. Please correct it manually or raise a bug report.\n${error}`
+        );
     }
   }
   return { state, code: tsCode };
