@@ -168,30 +168,30 @@ const ImportSpecifierReactTypeNameMap: ImportSpecifierReactTypeNameMapType = {
     const referencePaths = path.scope.bindings.ElementConfig.referencePaths;
     for (const referencePath of referencePaths) {
       const parentPath = referencePath.parentPath;
-      const parentNode = parentPath.node;
-      if (typeof (parentNode as any).typeParameters !== "undefined") {
-        parentPath.replaceWith(
-          t.tsTypeReference(
-            t.tsQualifiedName(
-              t.identifier("JSX"),
-              t.identifier("LibraryManagedAttributes")
-            ),
-            t.tsTypeParameterInstantiation([
-              t.tsTypeQuery(
-                (parentNode as any).typeParameters.params[0].argument.id
-              ),
-              t.tsTypeReference(
-                t.identifier("ComponentProps"),
-                t.tsTypeParameterInstantiation([
-                  t.tsTypeQuery(
-                    (parentNode as any).typeParameters.params[0].argument.id
-                  )
-                ])
-              )
-            ])
+      const parentNode: TodoAny = parentPath.node;
+      const reference = t.isTypeofTypeAnnotation(
+        parentNode.typeParameters.params[0]
+      )
+        ? t.tsTypeQuery(
+            (parentNode.typeParameters.params[0].argument as TodoAny).id
           )
-        );
-      }
+        : t.tsTypeReference(parentNode.typeParameters.params[0].id);
+
+      parentPath.replaceWith(
+        t.tsTypeReference(
+          t.tsQualifiedName(
+            t.identifier("JSX"),
+            t.identifier("LibraryManagedAttributes")
+          ),
+          t.tsTypeParameterInstantiation([
+            reference,
+            t.tsTypeReference(
+              t.identifier("ComponentProps"),
+              t.tsTypeParameterInstantiation([reference])
+            )
+          ])
+        )
+      );
     }
     path.scope.rename("ElementConfig", "ComponentProps");
     if (specifier.type === "ImportSpecifier") {
