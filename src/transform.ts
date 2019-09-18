@@ -214,10 +214,17 @@ const ImportSpecifierReactTypeNameMap: ImportSpecifierReactTypeNameMapType = {
             parentNode.id,
             t.tsTypeParameterInstantiation(
               parentNode.typeParameters.params.map(paramNode => {
-                if (t.isStringLiteralTypeAnnotation(paramNode)) {
+                if (
+                  t.isStringLiteralTypeAnnotation(paramNode) ||
+                  t.isAnyTypeAnnotation(paramNode)
+                ) {
+                  const nodeValue =
+                    (t.isStringLiteralTypeAnnotation(paramNode) &&
+                      paramNode.value) ||
+                    "any";
                   state.options.logger &&
                     state.options.logger.warn(
-                      `===> Downgrading ElementRef JSX intrinsic type '${paramNode.value}' to Element. You can manually replace with a more specific type.`
+                      `===> Downgrading ElementRef JSX intrinsic type '${nodeValue}' to Element. You can manually replace with a more specific type.`
                     );
                   return t.tsTypeReference(t.identifier("Element"));
                 } else if (t.isGenericTypeAnnotation(paramNode)) {

@@ -5,3 +5,4 @@ const MyComponent = () => <div>Hello World</div>;
 type MyRef1 = RefObject<Element> | null;
 type MyRef2 = RefObject<HTMLElement> | null;
 type MyRef3 = RefObject<typeof MyComponent> | null;
+type MyRef4 = RefObject<Element> | null;
