@@ -2,17 +2,17 @@ import * as t from "@babel/types";
 import { NodePath } from "@babel/core";
 import { Visitor } from "@babel/traverse";
 
-import { CliOptions } from "./cli";
-import computeNewlines from "./compute-newlines";
+import { CliOptions } from "../cli";
+import computeNewlines from "../compute-newlines";
 import {
   typeAnnotationToTSType,
   toTSType,
   toTSTypeArray,
   toTSEntityName,
   toTSTypeParameterInstantiation,
-  toTSTypeParameterDeclaration,
-  hasTypeAnnotation
-} from "./util-transforms";
+  toTSTypeParameterDeclaration
+} from "./ts-types";
+import { hasTypeAnnotation } from "./refinements";
 
 export type VisitorState = {
   usedUtilityTypes: Set<string>;
