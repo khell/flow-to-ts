@@ -2,20 +2,19 @@ import fs from "fs";
 import path from "path";
 import convert from "../src/convert";
 
-const failingTestNames = ["spread03", "spread04"];
+const skipTestNames = ["spread03", "spread04"];
+const expectedFailingTests = ["function-types/rest02"];
 
 describe("convert", () => {
-  const suites: string[] = false
-    ? []
-    : fs.readdirSync(path.join(__dirname, "fixtures/convert"));
+  const suites = fs.readdirSync(path.join(__dirname, "fixtures/convert"));
+
   for (const suiteName of suites) {
     describe(suiteName, () => {
-      const tests: string[] = false
-        ? []
-        : fs.readdirSync(path.join(__dirname, "fixtures/convert", suiteName));
-      for (const testName of tests.filter(
-        testName => !failingTestNames.includes(testName)
-      )) {
+      const tests = fs
+        .readdirSync(path.join(__dirname, "fixtures/convert", suiteName))
+        .filter(testName => !skipTestNames.includes(testName));
+
+      for (const testName of tests) {
         const dir = path.join(
           __dirname,
           "fixtures/convert",
@@ -29,9 +28,14 @@ describe("convert", () => {
         const options = hasOptions
           ? JSON.parse(fs.readFileSync(path.join(dir, "options.json"), "utf-8"))
           : undefined;
+
         test(testName.replace(/_/g, " "), () => {
-          const { code } = convert(flowCode, options);
-          expect(code).toEqual(tsCode);
+          try {
+            const { code } = convert(flowCode, options);
+            expect(code).toEqual(tsCode);
+          } catch (error) {
+            expect(expectedFailingTests).toContain(`${suiteName}/${testName}`);
+          }
         });
       }
     });

@@ -406,6 +406,16 @@ const transform: Visitor<VisitorState> = {
 
       const restNode: t.Node | null = rest as any;
       if (restNode && restNode.type === "Identifier") {
+        // Check if the argument actually has a name
+        // https://github.com/khell/flow-to-ts/issues/5
+        if (!restNode.name) {
+          throw new Error(
+            `Uncaught syntax error from parser on line ${restNode.loc &&
+              restNode.loc
+                .start}: Encountered in function type definition a rest parameter without a name.`
+          );
+        }
+
         const restElement: t.RestElement = {
           type: "RestElement",
           argument: restNode,
@@ -453,18 +463,13 @@ const transform: Visitor<VisitorState> = {
       // TypeScript AST simplifies these annotations in a single TSFunctionType
       const { name, optional, typeAnnotation } = path.node;
       const identifier: t.Identifier = {
+        ...BaseNodeDefaultSpreadTypes,
         type: "Identifier",
         name: name ? name.name : "",
         optional,
         typeAnnotation: t.tsTypeAnnotation(toTSType(typeAnnotation)),
         decorators: [],
-        leadingComments: null,
-        innerComments: null,
-        trailingComments: null,
-        start: null,
-        end: null,
-        loc: null,
-        newlines: undefined
+        loc: name && name.loc
       };
       // TODO: patch @babel/types - t.identifier omits typeAnnotation
       // const identifier = t.identifier(name.name, decorators, optional, t.tsTypeAnnotation(typeAnnotation));
