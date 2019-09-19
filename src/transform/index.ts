@@ -99,6 +99,14 @@ const utilityTypes = {
     return t.tsTypeReference(typeName, typeParameters);
   },
 
+  $Subtype: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
+    return typeAnnotation;
+  },
+
+  $Supertype: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
+    return typeAnnotation;
+  },
+
   Class: null, // TODO
 
   // These are two complicate to inline so we'll leave them as imports
@@ -109,7 +117,11 @@ const utilityTypes = {
 };
 
 const alwaysInlineUtilityTypes: (keyof typeof utilityTypes)[] = [
-  "$ReadOnlyArray"
+  "$ReadOnlyArray",
+
+  // These types are REMOVED
+  "$Subtype",
+  "$Supertype"
 ];
 
 // Mapping between React types for Flow and those for TypeScript.
