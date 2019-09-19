@@ -58,7 +58,6 @@ const QualifiedReactTypeNameMap = {
   Child: "ReactChild",
   Children: "ReactChildren",
   Element: "ReactElement",
-  Fragment: "ReactFragment",
   Portal: "ReactPortal",
   NodeArray: "ReactNodeArray",
 
