@@ -2,17 +2,21 @@ import * as t from "@babel/types";
 import { NodePath } from "@babel/core";
 import { Visitor } from "@babel/traverse";
 
-import { CliOptions } from "./cli";
-import computeNewlines from "./compute-newlines";
+import { CliOptions } from "../cli";
+import computeNewlines from "../compute-newlines";
 import {
-  typeAnnotationToTSType,
   toTSType,
   toTSTypeArray,
   toTSEntityName,
   toTSTypeParameterInstantiation,
-  toTSTypeParameterDeclaration,
-  hasTypeAnnotation
-} from "./util-transforms";
+  toTSTypeParameterDeclaration
+} from "./ts-type-converters";
+import { hasTypeAnnotation } from "./refinements";
+import { BaseNodeDefaultSpreadTypes } from "./structs";
+import {
+  transformers as UtilityTypeTransformers,
+  alwaysInlinedTypes as AlwaysInlinedUtilityTypes
+} from "./utility-types";
 
 export type VisitorState = {
   usedUtilityTypes: Set<string>;
@@ -24,93 +28,10 @@ export type VisitorState = {
 
 type TodoAny = any;
 
-const BaseNodeDefaultSpreadTypes = {
-  leadingComments: null,
-  innerComments: null,
-  trailingComments: null,
-  newlines: undefined,
-  start: null,
-  end: null,
-  loc: null
-};
-
 const locToString = (loc: t.SourceLocation | null) =>
   loc
     ? `${loc.start.line}:${loc.start.column}-${loc.end.line}:${loc.end.column}`
     : "";
-
-// TODO: figure out how to template these inline definitions
-const utilityTypes = {
-  $Keys: (
-    typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation
-  ): t.TSTypeOperator => ({
-    // TODO: patch @babel/types - tsTypeOperator should accept two arguments
-    // return t.tsTypeOperator(typeAnnotation, "keyof");
-    type: "TSTypeOperator",
-    typeAnnotation: typeAnnotationToTSType(typeAnnotation),
-    operator: "keyof",
-    ...BaseNodeDefaultSpreadTypes
-  }),
-
-  $Values: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
-    const tsType = typeAnnotationToTSType(typeAnnotation);
-    return t.tsIndexedAccessType(
-      tsType,
-      // TODO: patch @babel/types - tsTypeOperator should accept two arguments
-      //t.tsTypeOperator(typeAnnotation, "keyof"),
-      {
-        type: "TSTypeOperator",
-        typeAnnotation: tsType,
-        operator: "keyof",
-        ...BaseNodeDefaultSpreadTypes
-      }
-    );
-  },
-
-  $ReadOnly: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
-    const typeName = t.identifier("Readonly");
-    const typeParameters = t.tsTypeParameterInstantiation([
-      typeAnnotationToTSType(typeAnnotation)
-    ]);
-    return t.tsTypeReference(typeName, typeParameters);
-  },
-
-  $Shape: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
-    const typeName = t.identifier("Partial");
-    const typeParameters = t.tsTypeParameterInstantiation([
-      typeAnnotationToTSType(typeAnnotation)
-    ]);
-    return t.tsTypeReference(typeName, typeParameters);
-  },
-
-  $NonMaybeType: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
-    const typeName = t.identifier("NonNullable");
-    const typeParameters = t.tsTypeParameterInstantiation([
-      typeAnnotationToTSType(typeAnnotation)
-    ]);
-    return t.tsTypeReference(typeName, typeParameters);
-  },
-
-  $ReadOnlyArray: (typeAnnotation: t.TypeAnnotation | t.TSTypeAnnotation) => {
-    const typeName = t.identifier("ReadonlyArray");
-    const typeParameters = t.tsTypeParameterInstantiation([
-      typeAnnotationToTSType(typeAnnotation)
-    ]);
-    return t.tsTypeReference(typeName, typeParameters);
-  },
-
-  Class: null, // TODO
-
-  // These are two complicate to inline so we'll leave them as imports
-  $Diff: null,
-  $PropertyType: null,
-  $ElementType: null,
-  $Call: null
-};
-
-const alwaysInlineUtilityTypes: (keyof typeof utilityTypes)[] = [
-  "$ReadOnlyArray"
-];
 
 // Mapping between React types for Flow and those for TypeScript.
 const UnqualifiedReactTypeNameMap = {
@@ -602,15 +523,23 @@ const transform: Visitor<VisitorState> = {
         | t.Identifier
         | t.QualifiedTypeIdentifier
         | t.TSQualifiedName = idNode as any;
-      if (id.type === "Identifier" && id.name in utilityTypes) {
+      if (id.type === "Identifier" && id.name in UtilityTypeTransformers) {
+        const transformer = UtilityTypeTransformers[id.name];
+        const shouldInline =
+          AlwaysInlinedUtilityTypes.find(p => p === id.name) ||
+          state.options.inlineUtilityTypes;
+
         if (
           typeParameters &&
-          (alwaysInlineUtilityTypes.find(p => p === id.name) ||
-            state.options.inlineUtilityTypes) &&
-          typeof utilityTypes[id.name] === "function"
+          shouldInline &&
+          typeof transformer === "function"
         ) {
-          const inline = utilityTypes[id.name];
-          path.replaceWith(inline(...typeParameters.params));
+          const typeAnnotation: t.TSType | t.TSTypeReference = typeParameters
+            .params[0] as any;
+          console.assert(
+            t.isTSType(typeAnnotation) || t.isTSTypeAnnotation(typeAnnotation)
+          );
+          path.replaceWith(transformer(typeAnnotation));
           return;
         } else {
           state.usedUtilityTypes.add(id.name);
