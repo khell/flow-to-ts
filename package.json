@@ -16,7 +16,7 @@
   "dependencies": {
     "@babel/core": "^7.6.0",
     "@babel/generator": "npm:@khell/babel-generator@^7.6.0",
-    "@babel/parser": "^7.5.5",
+    "@babel/parser": "^7.6.0",
     "@babel/traverse": "npm:@khell/babel-traverse@^7.6.0",
     "@babel/types": "npm:@khell/babel-types@^7.6.4",
     "colors": "^1.3.3",
