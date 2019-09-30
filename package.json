@@ -28,7 +28,7 @@
     "progress": "^2.0.3"
   },
   "devDependencies": {
-    "@types/babel__generator": "^7.0.2",
+    "@types/babel__generator": "^7.6.0",
     "@types/colors": "^1.2.1",
     "@types/fs-readdir-recursive": "^1.0.0",
     "@types/jest": "^24.0.18",

@@ -23,6 +23,7 @@ export type CliOptions = {
   inputPattern: string;
   outputExtension: string;
   logLevel: "info" | "warn" | "error";
+  progress: boolean;
   logger?: {
     log: LoggerFunction;
     warn: LoggerFunction;
@@ -31,6 +32,11 @@ export type CliOptions = {
 };
 
 const noop = () => {};
+
+const noProgressBar = {
+  tick: (..._) => {},
+  interrupt: console.log
+};
 
 const cli = (argv: string[]) => {
   const program = new commander.Command();
@@ -92,7 +98,8 @@ const cli = (argv: string[]) => {
       "The level of logging to output to stdout (default: error).",
       /info|warn|error/,
       "error"
-    );
+    )
+    .option("--progress", "Show the progress bar (default: false)", false);
   program.parse(argv);
 
   // Validate options
@@ -138,17 +145,6 @@ const cli = (argv: string[]) => {
       .map(f => path.join(fileOrDir, f));
   }
 
-  // Setup logging
-  const progressBar = new ProgressBar(
-    "transpiling [:bar] :current/:total, current file: :file",
-    {
-      total: files.length,
-      width: 30,
-      complete: colors.green("#"),
-      incomplete: " "
-    }
-  );
-
   // Build options
   const options: CliOptions = {
     inlineUtilityTypes: Boolean(program.inlineUtilityTypes),
@@ -162,8 +158,22 @@ const cli = (argv: string[]) => {
     printWidth: program.printWidth,
     inputPattern: program.inputPattern,
     outputExtension: program.outputExtension,
-    logLevel: program.logLevel
+    logLevel: program.logLevel,
+    progress: program.progress
   };
+
+  // Setup logging
+  const progressBar = options.progress
+    ? new ProgressBar(
+        "transpiling [:bar] :current/:total, current file: :file",
+        {
+          total: files.length,
+          width: 30,
+          complete: colors.green("#"),
+          incomplete: " "
+        }
+      )
+    : noProgressBar;
 
   // Begin conversion
   let errorCount = 0;

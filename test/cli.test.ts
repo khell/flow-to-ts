@@ -74,7 +74,7 @@ describe("cli", () => {
     fs.writeFileSync(inputPath, "const a: number = 5;", "utf-8");
 
     // Act
-    cli(["node", flowToTsPath, "--log-level", "info", inputPath]);
+    cli(["node", flowToTsPath, "--log-level", "info", "--progress", inputPath]);
 
     // Assert
     expect(interrupt).toHaveBeenCalledWith(
@@ -115,7 +115,7 @@ describe("cli", () => {
     fs.writeFileSync(inputPath, "?", "utf-8");
 
     // Act
-    cli(["node", flowToTsPath, inputPath]);
+    cli(["node", flowToTsPath, "--progress", inputPath]);
 
     // Assert
     expect(interrupt).toHaveBeenCalledWith(
@@ -335,7 +335,7 @@ describe("cli", () => {
     fs.writeFileSync(inputPath, "const a: number = 5;", "utf-8");
 
     // Act
-    cli(["node", flowToTsPath, "--log-level", "info", inputPath]);
+    cli(["node", flowToTsPath, "--log-level", "info", "--progress", inputPath]);
 
     // Assert
     expect(tick).toHaveBeenNthCalledWith(1, 0, { file: inputPath });
